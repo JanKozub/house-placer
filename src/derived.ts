@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo } from 'react';
+import { createContext, createElement, useContext, useMemo } from 'react';
 import type { Site } from './geo/site';
 import { useStore } from './store';
 import { house } from './house/ambrozja17';
@@ -30,7 +30,8 @@ export function autoFloorLevel(site: Site, pl: Placement) {
   return Math.round((ew.terrainMean + house.plinth) * 100) / 100;
 }
 
-export function useDerived() {
+/** computes everything derived from the store once; provided via <DerivedProvider> */
+function useComputeDerived() {
   const site = useSite();
   const placement = useStore((s) => s.placement);
   const floorLevelSetting = useStore((s) => s.floorLevel);
@@ -38,7 +39,7 @@ export function useDerived() {
   const sun = useStore((s) => s.sun);
   const garden = useStore((s) => s.garden);
 
-  return useMemo(() => {
+  const geo = useMemo(() => {
     const autoFloor = autoFloorLevel(site, placement);
     const floorH = floorLevelSetting ?? autoFloor;
     const platformH = floorH - house.plinth;
@@ -49,7 +50,24 @@ export function useDerived() {
     const earthwork = computeEarthwork(platformPoly, platformH, (x, z) => site.dem.heightAt(x, z), 0.5);
     const setbacks = computeSetbacks(placement, site.parcel, buildingLine);
     const corners = nearestCornerDistances(placement, site.parcel, garden.filter((g) => g.kind === 'patio').map((g) => g.points));
-    const sunS = sunState(sun, site.meta.origin.lat, site.meta.origin.lon, site.trueNorth);
-    return { autoFloor, floorH, platformH, platform, footprint: fp, apron, earthwork, setbacks, corners, sun: sunS, floorY: floorH - site.baseH };
-  }, [site, placement, floorLevelSetting, buildingLine, sun, garden]);
+    return { autoFloor, floorH, platformH, platform, footprint: fp, apron, earthwork, setbacks, corners, floorY: floorH - site.baseH };
+  }, [site, placement, floorLevelSetting, buildingLine, garden]);
+  // the sun doesn't depend on the house: don't recompute it on every drag
+  const sunS = useMemo(() => sunState(sun, site.meta.origin.lat, site.meta.origin.lon, site.trueNorth), [sun, site]);
+  return useMemo(() => ({ ...geo, sun: sunS }), [geo, sunS]);
 }
+
+export type Derived = ReturnType<typeof useComputeDerived>;
+export const DerivedContext = createContext<Derived | null>(null);
+
+/** compute derived values once per state change and share them with every consumer */
+export function DerivedProvider({ children }: { children: React.ReactNode }) {
+  const d = useComputeDerived();
+  return createElement(DerivedContext.Provider, { value: d }, children);
+}
+
+export const useDerived = (): Derived => {
+  const d = useContext(DerivedContext);
+  if (!d) throw new Error('DerivedProvider missing');
+  return d;
+};

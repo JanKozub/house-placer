@@ -62,7 +62,7 @@ async function fetchImagery(b: BBox, file: string, px: number) {
   for (const src of sources) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const r = await fetch(src.url, { headers: { 'User-Agent': UA } });
+        const r = await fetch(src.url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(120_000) });
         const buf = Buffer.from(await r.arrayBuffer());
         // reject errors and blank (all-white) images, which compress to tiny files
         if (r.ok && buf.length > px * px * 0.04 && (r.headers.get('content-type') ?? '').includes('image')) {
@@ -126,7 +126,7 @@ async function fetchRoads(b: BBox, E0: number, N0: number) {
   return false;
 }
 
-/** imagery (whole DEM area + sharper close-up around the plot) and roads; updates site.json */
+/** imagery for the DEM area and roads; updates site.json */
 async function fetchMap() {
   const { readFile } = await import('node:fs/promises');
   const meta = JSON.parse(await readFile(new URL('site.json', OUT), 'utf8'));
@@ -140,9 +140,195 @@ async function fetchMap() {
   await writeFile(new URL('site.json', OUT), JSON.stringify(meta, null, 2));
 }
 
+/** GUGiK DSM (surface incl. trees/buildings) as an ASCII grid → Float32 heights, row 0 = north */
+async function fetchDsm(b: BBox, px: number): Promise<Float32Array> {
+  const url =
+    `https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMPT/GRID1/WCS/DigitalSurfaceModel?SERVICE=WCS&VERSION=1.0.0&REQUEST=GetCoverage` +
+    `&COVERAGE=DSM_PL-KRON86-NH&CRS=EPSG:2180&BBOX=${b.minE},${b.minN},${b.maxE},${b.maxN}&WIDTH=${px}&HEIGHT=${px}&FORMAT=image/x-aaigrid`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const txt = await (await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(300_000) })).text();
+      const lines = txt.split('\n');
+      const hdr: Record<string, number> = {};
+      let k = 0;
+      while (k < lines.length && /^[a-zA-Z]/.test(lines[k].trim())) {
+        const [key, v] = lines[k].trim().split(/\s+/);
+        hdr[key.toLowerCase()] = Number(v);
+        k++;
+      }
+      const vals = lines.slice(k).join(' ').trim().split(/\s+/).map(Number);
+      if (hdr.ncols !== px || vals.length < px * px) throw new Error(`bad grid ${hdr.ncols}×${hdr.nrows}, ${vals.length} values`);
+      const nodata = hdr.nodata_value ?? -9999;
+      const out = new Float32Array(px * px);
+      // GUGiK's DSM has gaps (0 / nodata); mark them NaN so the caller can fill from the DTM
+      for (let i = 0; i < px * px; i++) out[i] = vals[i] === nodata || !(vals[i] > 1) ? NaN : vals[i];
+      return out;
+    } catch (e) {
+      console.log('dsm attempt failed', String(e));
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+  throw new Error('DSM unavailable');
+}
+
+/** GUGiK DTM (bare terrain, complete coverage) as Float32 heights, row 0 = north */
+async function fetchDtm(b: BBox, px: number): Promise<Float32Array> {
+  const url =
+    `https://mapy.geoportal.gov.pl/wss/service/PZGIK/NMT/GRID1/WCS/DigitalTerrainModelFormatTIFF?SERVICE=WCS&VERSION=1.0.0&REQUEST=GetCoverage` +
+    `&COVERAGE=DTM_PL-KRON86-NH_TIFF&CRS=EPSG:2180&BBOX=${b.minE},${b.minN},${b.maxE},${b.maxN}&WIDTH=${px}&HEIGHT=${px}&FORMAT=image/tiff`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const tiff = await fromArrayBuffer(await (await fetch(url, { signal: AbortSignal.timeout(300_000) })).arrayBuffer());
+      const ras = (await (await tiff.getImage()).readRasters({ interleave: true })) as unknown as Float32Array;
+      return new Float32Array(ras);
+    } catch (e) {
+      console.log('dtm attempt failed', String(e));
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+  throw new Error('DTM unavailable');
+}
+
+/** DSM in n×n tiles (the service drops large requests); null if any tile fails */
+async function fetchDsmTiled(b: BBox, px: number, n: number): Promise<Float32Array | null> {
+  const tp = px / n, ts = (b.maxE - b.minE) / n;
+  const out = new Float32Array(px * px);
+  for (let row = 0; row < n; row++)
+    for (let col = 0; col < n; col++) {
+      const tb: BBox = { minE: b.minE + col * ts, maxE: b.minE + (col + 1) * ts, maxN: b.maxN - row * ts, minN: b.maxN - (row + 1) * ts };
+      let t: Float32Array;
+      try {
+        t = await fetchDsm(tb, tp);
+      } catch {
+        console.warn('DSM tile unavailable — falling back to DTM + OSM forest canopy');
+        return null;
+      }
+      for (let j = 0; j < tp; j++) out.set(t.subarray(j * tp, (j + 1) * tp), (row * tp + j) * px + col * tp);
+    }
+  return out;
+}
+
+/** OSM forest/wood polygons rasterised onto a grid (1 = canopy), row 0 = north */
+async function forestMask(b: BBox, px: number): Promise<Uint8Array | null> {
+  const [w, s] = proj4('EPSG:2180', 'EPSG:4326', [b.minE, b.minN]);
+  const [e, n] = proj4('EPSG:2180', 'EPSG:4326', [b.maxE, b.maxN]);
+  const q = `[out:json][timeout:90];(way["landuse"="forest"](${s},${w},${n},${e});way["natural"="wood"](${s},${w},${n},${e}););out geom;`;
+  try {
+    const r = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      headers: { 'User-Agent': UA, Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'data=' + encodeURIComponent(q),
+      signal: AbortSignal.timeout(180_000),
+    });
+    if (!r.ok) throw new Error(String(r.status));
+    const d = (await r.json()) as { elements: { geometry?: { lat: number; lon: number }[] }[] };
+    const mask = new Uint8Array(px * px);
+    const res = (b.maxE - b.minE) / px;
+    let polys = 0;
+    for (const el of d.elements) {
+      if (!el.geometry || el.geometry.length < 4) continue;
+      // to grid coords (col, row)
+      const pts = el.geometry.map(({ lat, lon }) => {
+        const [E, N] = proj4('EPSG:4326', 'EPSG:2180', [lon, lat]);
+        return [(E - b.minE) / res, (b.maxN - N) / res] as [number, number];
+      });
+      polys++;
+      let r0 = Infinity, r1 = -Infinity;
+      for (const [, y] of pts) { r0 = Math.min(r0, y); r1 = Math.max(r1, y); }
+      for (let row = Math.max(0, Math.floor(r0)); row <= Math.min(px - 1, Math.ceil(r1)); row++) {
+        const y = row + 0.5;
+        const xs: number[] = [];
+        for (let k = 0, m = pts.length - 1; k < pts.length; m = k++) {
+          const [x1, y1] = pts[k], [x2, y2] = pts[m];
+          if (y1 > y !== y2 > y) xs.push(x1 + ((y - y1) * (x2 - x1)) / (y2 - y1));
+        }
+        xs.sort((a, c) => a - c);
+        for (let k = 0; k + 1 < xs.length; k += 2)
+          for (let col = Math.max(0, Math.ceil(xs[k] - 0.5)); col <= Math.min(px - 1, Math.floor(xs[k + 1] - 0.5)); col++) mask[row * px + col] = 1;
+      }
+    }
+    console.log('forest polygons', polys);
+    return mask;
+  } catch (e) {
+    console.warn('OSM forests unavailable', String(e));
+    return null;
+  }
+}
+
+const CANOPY_M = 18;
+
+/** heights as Uint16 centimetres-above-base so they stay small: h = base + v / 50 (2 cm steps) */
+function packHeights(h: Float32Array) {
+  let mn = Infinity;
+  for (const v of h) mn = Math.min(mn, v);
+  const base = Math.floor(mn);
+  const u = new Uint16Array(h.length);
+  for (let i = 0; i < h.length; i++) u[i] = Math.max(0, Math.min(65535, Math.round((h[i] - base) * 50)));
+  return { base, scale: 1 / 50, buf: Buffer.from(u.buffer) };
+}
+
+/**
+ * Wider landscape for views from the house: an 8 km DSM ring (trees/buildings, 8 m) and a 30 km
+ * horizon ring (60 m), each with satellite imagery. Updates site.json → landscape.
+ */
+async function fetchLandscape() {
+  const { readFile } = await import('node:fs/promises');
+  const meta = JSON.parse(await readFile(new URL('site.json', OUT), 'utf8'));
+  const { E: E0, N: N0 } = meta.origin;
+  const rings = [
+    { name: 'wide', size: 8000, px: 1000, dsm: true, tiles: 2 },
+    { name: 'far', size: 30000, px: 500, dsm: false, tiles: 1 },
+  ];
+  const landscape: Record<string, unknown> = {};
+  for (const r of rings) {
+    const h = r.size / 2;
+    const b: BBox = { minE: E0 - h, minN: N0 - h, maxE: E0 + h, maxN: N0 + h };
+    const dtm = await fetchDtm(b, r.px);
+    const heights = new Float32Array(dtm);
+    let dsmCover = 0, canopy = 0;
+    if (r.dsm) {
+      // prefer the real surface model (trees, buildings); fill its gaps with DTM + OSM forest canopy
+      const dsm = await fetchDsmTiled(b, r.px, 2);
+      const forest = await forestMask(b, r.px);
+      for (let i = 0; i < dtm.length; i++) {
+        if (dsm && Number.isFinite(dsm[i]) && dsm[i] >= dtm[i] - 2) {
+          heights[i] = dsm[i];
+          dsmCover++;
+        } else if (forest?.[i]) {
+          heights[i] = dtm[i] + CANOPY_M;
+          canopy++;
+        }
+      }
+    }
+    const packed = packHeights(heights);
+    await writeFile(new URL(`land-${r.name}.bin`, OUT), packed.buf);
+    // imagery as n×n tiles of 2048 px (Esri times out on larger exports), row-major from the north-west
+    const tiles: (string | null)[] = [];
+    const ts = r.size / r.tiles;
+    for (let row = 0; row < r.tiles; row++)
+      for (let col = 0; col < r.tiles; col++) {
+        const tb: BBox = { minE: b.minE + col * ts, maxE: b.minE + (col + 1) * ts, maxN: b.maxN - row * ts, minN: b.maxN - (row + 1) * ts };
+        const file = `land-${r.name}-${row}${col}.jpg`;
+        tiles.push((await fetchImagery(tb, file, 2048)) ? file : null);
+      }
+    landscape[r.name] = {
+      bbox: b, size: r.size, px: r.px, res: r.size / r.px, base: packed.base, scale: packed.scale, file: `land-${r.name}.bin`,
+      tiles: r.tiles, imagery: tiles.every(Boolean) ? tiles : null,
+      surface: dsmCover ? 'GUGiK DSM + DTM' : canopy ? 'GUGiK DTM + OSM forest canopy' : 'GUGiK DTM',
+    };
+    console.log('landscape', r.name, r.size, 'm @', r.size / r.px, 'm', `DSM ${((100 * dsmCover) / dtm.length).toFixed(0)}%, canopy ${((100 * canopy) / dtm.length).toFixed(0)}%`, 'imagery', tiles.filter(Boolean).length + '/' + tiles.length);
+  }
+  meta.landscape = landscape;
+  await writeFile(new URL('site.json', OUT), JSON.stringify(meta, null, 2));
+}
+
 async function main() {
   if (process.argv.includes('--map-only') || process.argv.includes('--ortho-only')) {
     await fetchMap();
+    return;
+  }
+  if (process.argv.includes('--landscape-only')) {
+    await fetchLandscape();
     return;
   }
   await mkdir(OUT, { recursive: true });
@@ -213,8 +399,9 @@ async function main() {
   await writeFile(new URL('parcel.json', OUT), JSON.stringify({ id: PARCEL_ID, ring }, null, 2));
   await writeFile(new URL('neighbors.json', OUT), JSON.stringify([...neighbors.values()]));
 
-  // 4. Imagery + roads
+  // 4. Imagery + roads, then the wider landscape
   await fetchMap();
+  await fetchLandscape();
 }
 
 function pointInRing(x: number, y: number, ring: Ring) {

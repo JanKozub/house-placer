@@ -25,6 +25,12 @@ export function PhotoRenderer({ target, onProgress }: { target: number; onProgre
         terrain.material = baked;
       }
     }
+    // physically transmissive glass for the path tracer
+    const glassMats: THREE.MeshPhysicalMaterial[] = [];
+    scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.MeshPhysicalMaterial | undefined;
+      if (o.name === 'house-glass' && m && 'transmission' in m) { m.transmission = 0.95; m.opacity = 1; m.transparent = false; m.needsUpdate = true; glassMats.push(m); }
+    });
     // hide raster-only helpers (overlays/labels)
     const hidden: THREE.Object3D[] = [];
     scene.traverse((o) => {
@@ -59,6 +65,7 @@ export function PhotoRenderer({ target, onProgress }: { target: number; onProgre
       }
       swapped.current = [];
       hidden.forEach((o) => (o.visible = true));
+      glassMats.forEach((m) => { m.transmission = 0; m.opacity = 0.28; m.transparent = true; m.needsUpdate = true; });
     };
   }, [gl, scene, camera]); // eslint-disable-line react-hooks/exhaustive-deps
 

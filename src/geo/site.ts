@@ -17,6 +17,30 @@ export interface SiteMeta {
   dem: { width: number; height: number; res: number; min: number; max: number };
   imagery?: { file: string; source: string } | null;
   roads?: string | null;
+  landscape?: Record<'wide' | 'far', LandscapeMeta>;
+}
+
+export interface LandscapeMeta {
+  bbox: { minE: number; minN: number; maxE: number; maxN: number };
+  size: number;
+  px: number;
+  res: number;
+  base: number;
+  scale: number;
+  file: string;
+  tiles: number;
+  imagery: string[] | null;
+  surface: string;
+}
+
+/** a ring of wider terrain around the detailed site DEM (site-local coords) */
+export interface LandRing {
+  meta: LandscapeMeta;
+  heights: Float32Array;
+  /** site-local x of the west edge, z of the north edge */
+  x0: number;
+  z0: number;
+  imageryUrls: string[] | null;
 }
 
 export class Dem {
@@ -65,6 +89,8 @@ export interface Site {
   /** imagery provider, for attribution */
   imagerySource: string | null;
   roads: Road[];
+  /** wider landscape for long views (8 km, 30 km), when downloaded */
+  land: LandRing[];
 }
 
 export function makeSite(
@@ -74,6 +100,7 @@ export function makeSite(
   demBuf: ArrayBuffer,
   hasOrtho: boolean,
   roads: Road[] = [],
+  land: LandRing[] = [],
 ): Site {
   const { E, N } = meta.origin;
   const toLocal = ([e, n]: [number, number]): P2 => [e - E, -(n - N)];
@@ -95,6 +122,7 @@ export function makeSite(
     orthoUrl: hasOrtho ? `${SITE}/${meta.imagery?.file ?? 'ortho.jpg'}` : null,
     imagerySource: hasOrtho ? meta.imagery?.source ?? 'GUGiK' : null,
     roads,
+    land,
   };
 }
 
@@ -106,5 +134,25 @@ export async function loadSite(): Promise<Site> {
     fetch(`${SITE}/dem.bin`).then((r) => r.arrayBuffer()),
     meta.roads ? fetch(`${SITE}/${meta.roads}`).then((r) => r.json()).catch(() => []) : Promise.resolve([]),
   ]);
-  return makeSite(meta, parcel.ring, neighbors, demBuf, !!meta.imagery, roads);
+  const land: LandRing[] = [];
+  for (const key of ['wide', 'far'] as const) {
+    const lm = meta.landscape?.[key];
+    if (!lm) continue;
+    try {
+      const buf: ArrayBuffer = await fetch(`${SITE}/${lm.file}`).then((r) => r.arrayBuffer());
+      const u = new Uint16Array(buf);
+      const heights = new Float32Array(u.length);
+      for (let i = 0; i < u.length; i++) heights[i] = lm.base + u[i] * lm.scale;
+      land.push({
+        meta: lm,
+        heights,
+        x0: lm.bbox.minE - meta.origin.E,
+        z0: -(lm.bbox.maxN - meta.origin.N),
+        imageryUrls: lm.imagery ? lm.imagery.map((f) => `${SITE}/${f}`) : null,
+      });
+    } catch {
+      /* landscape is optional */
+    }
+  }
+  return makeSite(meta, parcel.ring, neighbors, demBuf, !!meta.imagery, roads, land);
 }

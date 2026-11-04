@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useDeferredValue, useRef } from 'react';
 import { useDerived, useSite, autoFloorLevel } from '../derived';
 import { DEFAULT_PALETTE, PERSIST_KEYS, useStore, type DimsMode, type Palette, type Tool } from '../store';
 import { house, roofTopAt } from '../house/ambrozja17';
@@ -46,7 +46,7 @@ export function PreviewPanel() {
   const setPalette = useStore((s) => s.setPalette);
   const layers = useStore((s) => s.layers);
   const setLayers = useStore((s) => s.setLayers);
-  const d = useDerived();
+  const d = useDeferredValue(useDerived());
   const times = sunTimes(sun, site.meta.origin.lat, site.meta.origin.lon);
   const presets: [string, Partial<typeof sun>][] = [
     ['Letni wieczór', { month: 6, day: 21, minutes: 19 * 60 + 30 }],
@@ -115,8 +115,8 @@ export function PreviewPanel() {
 
 export function PlacementPanel() {
   const site = useSite();
-  const d = useDerived();
-  const pl = useStore((s) => s.placement);
+  const d = useDeferredValue(useDerived());
+  const pl = useDeferredValue(useStore((s) => s.placement));
   const setPlacement = useStore((s) => s.setPlacement);
   const floorLevel = useStore((s) => s.floorLevel);
   const tool = useStore((s) => s.tool);
@@ -291,8 +291,8 @@ function nearestRoadBearing(parcel: [number, number][], pl: { x: number; z: numb
 /** side elevation along the house's front/back axis: terrain before/after and house silhouette */
 function Profile() {
   const site = useSite();
-  const d = useDerived();
-  const pl = useStore((s) => s.placement);
+  const d = useDeferredValue(useDerived());
+  const pl = useDeferredValue(useStore((s) => s.placement));
   const W = 320, H = 130;
   const half = 26;
   const samples = 105;
@@ -334,7 +334,7 @@ function Profile() {
 }
 
 function CornerTable() {
-  const d = useDerived();
+  const d = useDeferredValue(useDerived());
   return (
     <table className="corners">
       <thead>

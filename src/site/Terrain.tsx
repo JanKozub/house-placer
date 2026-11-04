@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Site } from '../geo/site';
 import { closestOnSegment, pointInPolygon, type P2 } from '../placement/geom2d';
@@ -49,6 +50,7 @@ export function Terrain({ site, platform, apron }: { site: Site; platform: Platf
   const showRoads = useStore((s) => s.layers.roads !== false);
   const roads = useMemo(() => (showRoads ? site.roads : []), [showRoads, site.roads]);
   const dem = site.dem;
+  const invalidate = useThree((s) => s.invalidate);
 
   const geom = useMemo(() => {
     const W = dem.width, H = dem.height, r = dem.res;
@@ -80,11 +82,14 @@ export function Terrain({ site, platform, apron }: { site: Site; platform: Platf
 
   // carve platform
   const carvedRef = useRef<number[]>([]);
+  const dirtyRef = useRef<[number, number, number, number] | null>(null);
   useEffect(() => {
     const pos = geom.getAttribute('position') as THREE.BufferAttribute;
     const W = dem.width;
     for (const k of carvedRef.current) pos.setY(k, dem.data[k] - site.baseH);
     carvedRef.current = [];
+    // region whose normals must be recomputed: last carve ∪ this carve
+    let box = dirtyRef.current;
     if (platform) {
       let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
       for (const [x, z] of platform.polygon) {
@@ -104,11 +109,26 @@ export function Terrain({ site, platform, apron }: { site: Site; platform: Platf
             carvedRef.current.push(k);
           }
         }
-    }
+      dirtyRef.current = [i0, i1, j0, j1];
+      box = box ? [Math.min(box[0], i0), Math.max(box[1], i1), Math.min(box[2], j0), Math.max(box[3], j1)] : [i0, i1, j0, j1];
+    } else dirtyRef.current = null;
     pos.needsUpdate = true;
-    geom.computeVertexNormals();
-    geom.computeBoundingSphere();
-  }, [geom, platform, dem, site]);
+    // regular grid: per-vertex normals from central height differences, only where heights changed
+    // (recomputing the whole 100k-vertex mesh on every house drag was the main stall)
+    if (box) {
+      const nrm = geom.getAttribute('normal') as THREE.BufferAttribute;
+      const H = dem.height, r2 = 2 * dem.res;
+      const y = (i: number, j: number) => pos.getY(Math.min(H - 1, Math.max(0, j)) * W + Math.min(W - 1, Math.max(0, i)));
+      for (let j = Math.max(0, box[2] - 1); j <= Math.min(H - 1, box[3] + 1); j++)
+        for (let i = Math.max(0, box[0] - 1); i <= Math.min(W - 1, box[1] + 1); i++) {
+          const dx = (y(i + 1, j) - y(i - 1, j)) / r2, dz = (y(i, j + 1) - y(i, j - 1)) / r2;
+          const l = Math.hypot(dx, 1, dz);
+          nrm.setXYZ(j * W + i, -dx / l, 1 / l, -dz / l);
+        }
+      nrm.needsUpdate = true;
+    }
+    invalidate();
+  }, [geom, platform, dem, site, invalidate]);
 
   // textures
   const [orthoTex, setOrthoTex] = useState<THREE.Texture | null>(null);
@@ -127,9 +147,12 @@ export function Terrain({ site, platform, apron }: { site: Site; platform: Platf
     return t;
   }, []);
   useEffect(() => {
-    paintOverlay(overlay.image as HTMLCanvasElement, spec, { parcel: site.parcel, lawn, garden, apron, roads });
+    // the gravel strip around the house is a separate mesh (ApronMesh), so dragging the house
+    // doesn't repaint and re-upload this 4096² texture every frame
+    paintOverlay(overlay.image as HTMLCanvasElement, spec, { parcel: site.parcel, lawn, garden, apron: null, roads });
     overlay.needsUpdate = true;
-  }, [overlay, spec, site, lawn, garden, apron, roads]);
+    invalidate();
+  }, [overlay, spec, site, lawn, garden, roads, invalidate]);
 
   // base: satellite (or synthetic field) + roads, composited once per change
   const baseTex = useMemo(() => {
@@ -142,7 +165,8 @@ export function Terrain({ site, platform, apron }: { site: Site; platform: Platf
     const img = site.orthoUrl && useOrtho && orthoTex ? (orthoTex.image as CanvasImageSource) : null;
     paintBase(baseTex.image as HTMLCanvasElement, img, fallback.image as HTMLCanvasElement, { x0: dem.x0, z0: dem.z0, sizeX: dem.sizeX, sizeZ: dem.sizeZ }, roads);
     baseTex.needsUpdate = true;
-  }, [baseTex, orthoTex, useOrtho, site.orthoUrl, fallback, dem, roads]);
+    invalidate();
+  }, [baseTex, orthoTex, useOrtho, site.orthoUrl, fallback, dem, roads, invalidate]);
 
   const mat = useMemo(() => {
     const m = new THREE.MeshStandardMaterial({ roughness: 0.97, metalness: 0 });

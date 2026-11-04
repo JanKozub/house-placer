@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useStore } from '../store';
 import { buildHouse, toLocal, type PartName } from './geometry';
@@ -6,8 +7,9 @@ import { createMaterials } from './materials';
 import { house } from './ambrozja17';
 import { rotationY, type Placement } from '../placement/geom2d';
 
+// a few broad lights (each point light costs every fragment of every lit material)
 const LIGHTS: [number, number][] = [
-  [3.2, 9.3], [5.3, 14.0], [9.6, 12.0], [9.9, 2.1], [14.5, 3.6], [14.5, 7.2], [14.5, 10.4],
+  [3.2, 9.3], [9.6, 12.0], [14.5, 7.2],
 ];
 const WALL_LAMPS: [number, number, number][] = [
   // X, Y, rotation (plan) — just outside the façade
@@ -22,7 +24,11 @@ export function HouseModel({ placement, floorY, night }: { placement: Placement;
   const interiorLights = useStore((s) => s.layers.interiorLights);
   const parts = useMemo(() => buildHouse(), []);
   const mats = useMemo(() => createMaterials(palette), []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => mats.update(palette), [palette, mats]);
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    mats.update(palette);
+    invalidate();
+  }, [palette, mats, invalidate]);
   useEffect(() => () => mats.all.forEach((m) => m.dispose()), [mats]);
 
   const lampMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#222', emissive: '#ffd59a', emissiveIntensity: 0 }), []);

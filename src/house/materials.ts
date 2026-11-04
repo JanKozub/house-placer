@@ -152,8 +152,10 @@ export function createMaterials(palette: Palette): MaterialSet {
     soffit: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7, map: textures.wood(palette.wood) }),
     trim: new THREE.MeshStandardMaterial({ color: palette.roof, roughness: 0.45, metalness: 0.6, side: THREE.DoubleSide }),
     frame: new THREE.MeshStandardMaterial({ color: palette.frames, roughness: 0.45, metalness: 0.2 }),
+    // live view: plain transparent glass with reflections — real transmission would re-render the whole
+    // scene (incl. the 30 km landscape) into an extra buffer every frame. Photo mode switches it on.
     glass: new THREE.MeshPhysicalMaterial({
-      color: '#d9e4ea', metalness: 0, roughness: 0.02, transmission: 0.92, thickness: 0.02, ior: 1.52, transparent: true, opacity: 0.35, envMapIntensity: 1.4,
+      color: '#d9e4ea', metalness: 0, roughness: 0.02, transmission: 0, thickness: 0.02, ior: 1.52, transparent: true, opacity: 0.28, envMapIntensity: 1.4, depthWrite: false,
     }),
     wood: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.55, map: textures.wood(palette.wood) }),
     garageDoor: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5, map: textures.garage(palette.wood) }),

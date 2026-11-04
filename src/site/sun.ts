@@ -5,14 +5,18 @@ import type { P2 } from '../placement/geom2d';
 
 const YEAR = 2027;
 
+// constructing Intl formatters is slow — build them once
+const WARSAW_PARTS = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Warsaw', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+});
+const WARSAW_HM = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Warsaw', hour: '2-digit', minute: '2-digit', hour12: false });
+
 /** Build a Date for a wall-clock time in Europe/Warsaw (handles CET/CEST). */
 export function warsawDate(month: number, day: number, minutes: number): Date {
   const h = Math.floor(minutes / 60), m = Math.round(minutes % 60);
   let guess = Date.UTC(YEAR, month - 1, day, h, m) - 3600_000;
   for (let i = 0; i < 2; i++) {
-    const parts = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/Warsaw', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
-    }).formatToParts(new Date(guess));
+    const parts = WARSAW_PARTS.formatToParts(new Date(guess));
     const get = (t: string) => Number(parts.find((p) => p.type === t)!.value);
     const shown = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour') % 24, get('minute'));
     guess += Date.UTC(YEAR, month - 1, day, h, m) - shown;
@@ -53,7 +57,7 @@ export function sunTimes(sun: Sun, lat: number, lon: number) {
   const t = SunCalc.getTimes(warsawDate(sun.month, sun.day, 12 * 60), lat, lon);
   const toMin = (d: Date | null) => {
     if (!d || isNaN(d.getTime())) return NaN;
-    const s = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Warsaw', hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+    const s = WARSAW_HM.format(d);
     const [h, m] = s.split(':').map(Number);
     return h * 60 + m;
   };
@@ -61,8 +65,23 @@ export function sunTimes(sun: Sun, lat: number, lon: number) {
 }
 
 /** Simple analytic HDR sky as an equirectangular float texture (works for raster PMREM and the path tracer). */
-export function makeSkyTexture(sunDir: THREE.Vector3, W = 512, H = 256): THREE.DataTexture {
-  const data = new Float32Array(W * H * 4);
+export function makeSkyTexture(sunDir: THREE.Vector3, W = 256, H = 128): THREE.DataTexture {
+  const tex = new THREE.DataTexture(new Float32Array(W * H * 4), W, H, THREE.RGBAFormat, THREE.FloatType);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.LinearSRGBColorSpace;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  return fillSkyTexture(tex, sunDir);
+}
+
+/**
+ * Re-fill an existing sky texture in place. Keeping the same texture object matters: a new
+ * environment texture makes three.js recompile every material's shader.
+ */
+export function fillSkyTexture(tex: THREE.DataTexture, sunDir: THREE.Vector3): THREE.DataTexture {
+  const W = tex.image.width, H = tex.image.height;
+  const data = tex.image.data as Float32Array;
   const alt = Math.asin(THREE.MathUtils.clamp(sunDir.y, -1, 1));
   const day = THREE.MathUtils.clamp((alt + 0.1) / 0.35, 0, 1); // 0 at -6°, 1 at ~14°
   const golden = THREE.MathUtils.clamp(1 - Math.abs(alt - 0.05) / 0.25, 0, 1);
@@ -91,10 +110,11 @@ export function makeSkyTexture(sunDir: THREE.Vector3, W = 512, H = 256): THREE.D
         tmp.r += sunCol.r * glow * day;
         tmp.g += sunCol.g * glow * day;
         tmp.b += sunCol.b * glow * day;
-        if (cos > 0.99995 && d.y > -0.01) {
-          tmp.r += 400 * sunCol.r * day;
-          tmp.g += 400 * sunCol.g * day;
-          tmp.b += 400 * sunCol.b * day;
+        // sun disc (≈1 texel at this resolution, intensity scaled to keep the same energy)
+        if (cos > 0.9997 && d.y > -0.01) {
+          tmp.r += 70 * sunCol.r * day;
+          tmp.g += 70 * sunCol.g * day;
+          tmp.b += 70 * sunCol.b * day;
         }
       }
       const k = (j * W + i) * 4;
@@ -104,12 +124,14 @@ export function makeSkyTexture(sunDir: THREE.Vector3, W = 512, H = 256): THREE.D
       data[k + 3] = 1;
     }
   }
-  const tex = new THREE.DataTexture(data, W, H, THREE.RGBAFormat, THREE.FloatType);
-  tex.mapping = THREE.EquirectangularReflectionMapping;
-  tex.colorSpace = THREE.LinearSRGBColorSpace;
-  tex.magFilter = THREE.LinearFilter;
-  tex.minFilter = THREE.LinearFilter;
-  tex.generateMipmaps = false;
   tex.needsUpdate = true;
   return tex;
+}
+
+/** sky colour at the horizon for a sun direction (matches makeSkyTexture), used for distance haze */
+export function horizonColor(sunDir: THREE.Vector3): THREE.Color {
+  const alt = Math.asin(THREE.MathUtils.clamp(sunDir.y, -1, 1));
+  const day = THREE.MathUtils.clamp((alt + 0.1) / 0.35, 0, 1);
+  const golden = THREE.MathUtils.clamp(1 - Math.abs(alt - 0.05) / 0.25, 0, 1);
+  return new THREE.Color(0.72, 0.82, 0.95).lerp(new THREE.Color(1.0, 0.62, 0.38), golden * 0.7).multiplyScalar(1.1 * day + 0.015);
 }

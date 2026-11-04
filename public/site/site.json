@@ -28,5 +28,48 @@
     "file": "ortho.jpg",
     "source": "Esri World Imagery"
   },
-  "roads": "roads.json"
+  "roads": "roads.json",
+  "landscape": {
+    "wide": {
+      "bbox": {
+        "minE": 567771,
+        "minN": 220544,
+        "maxE": 575771,
+        "maxN": 228544
+      },
+      "size": 8000,
+      "px": 1000,
+      "res": 8,
+      "base": 256,
+      "scale": 0.02,
+      "file": "land-wide.bin",
+      "tiles": 2,
+      "imagery": [
+        "land-wide-00.jpg",
+        "land-wide-01.jpg",
+        "land-wide-10.jpg",
+        "land-wide-11.jpg"
+      ],
+      "surface": "GUGiK DTM + OSM forest canopy"
+    },
+    "far": {
+      "bbox": {
+        "minE": 556771,
+        "minN": 209544,
+        "maxE": 586771,
+        "maxN": 239544
+      },
+      "size": 30000,
+      "px": 500,
+      "res": 60,
+      "base": 0,
+      "scale": 0.02,
+      "file": "land-far.bin",
+      "tiles": 1,
+      "imagery": [
+        "land-far-00.jpg"
+      ],
+      "surface": "GUGiK DTM"
+    }
+  }
 }

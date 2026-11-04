@@ -11,6 +11,7 @@ The UI is in Polish. Deployed on Netlify (`netlify.toml`: `npm run build` → `d
 **3D preview**
 - Parametric house model built from the floor plan: walls with window and door openings, two 30° gable wings meeting at a common ridge with valleys, eaves and gable overhangs, gutters, chimneys, terrace, porch/carport and interior partitions.
 - Real terrain from the GUGiK NMT 1 m model, with a building platform carved in and 1:2 embankments.
+- **Views from the house** ("Widok z domu"): eye-height look-around from the window facing the valley, the terrace, living room, kitchen and bedroom, over an 8 km landscape (8 m grid, GUGiK DSM where available, otherwise DTM with OpenStreetMap forests raised to canopy height) and a 30 km horizon ring, with earth curvature and distance haze. The valley direction is detected from the terrain, and a link opens Google Street View at the nearest road.
 - Satellite imagery (Esri World Imagery) draped on the terrain, and roads from OpenStreetMap painted as asphalt, gravel or paved surfaces and labelled in the plan view.
 - Sun computed for the plot's latitude and longitude at any date and time, in Polish local time (CET/CEST), corrected for PUWG 1992 grid convergence.
 - Analytic HDR sky, soft shadows, GTAO ambient occlusion, and interior and wall lights at night.
@@ -39,6 +40,7 @@ Site data is already in `public/site/`. To refresh it:
 ```bash
 npm run fetch-site    # parcel + neighbours (ULDK), DEM (NMT WCS), then imagery + roads
 npm run fetch-map     # only satellite imagery (Esri, GUGiK fallback) + OSM roads (Overpass)
+npm run fetch-landscape  # only the 8 km / 30 km landscape rings (DSM/DTM + imagery)
 ```
 
 If no imagery is available, the ground falls back to a synthetic field texture.

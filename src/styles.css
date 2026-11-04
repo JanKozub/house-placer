@@ -125,3 +125,11 @@ code { background: #f1efea; padding: 1px 4px; border-radius: 4px; }
 .seg button:first-child { border-radius: 6px 0 0 6px; }
 .seg button:last-child { border-radius: 0 6px 6px 0; }
 .corner-label.point { background: #0f766e; width: auto; min-width: 18px; padding: 0 4px; border-radius: 9px; font-size: 10px; }
+
+.toolbar-label { font-size: 12px; color: #1f2937; background: rgba(255, 255, 255, 0.8); padding: 4px 6px; border-radius: 6px; }
+.view-hud { position: absolute; left: 10px; bottom: 26px; font-size: 12px; color: #fff; background: rgba(20, 24, 28, 0.7); padding: 5px 10px; border-radius: 6px; }
+.view-hud a { color: #93c5fd; }
+
+.label-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
+.label-anchor { position: absolute; left: 0; top: 0; will-change: transform; }
+.tool-hint, .attribution, .compass, .view-toolbar, .view-hud, .photo-hud { z-index: 10; }

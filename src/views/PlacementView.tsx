@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
-import { Html, Line, MapControls, OrthographicCamera } from '@react-three/drei';
-import { SceneContent } from './SceneContent';
-import { SiteContext, useDerived, useSite } from '../derived';
+import { useThree, type ThreeEvent } from '@react-three/fiber';
+import { Line, MapControls, OrthographicCamera } from '@react-three/drei';
+import { LabelContext, LabelOverlay, LabelProjector, LabelRegistry, WorldLabel } from './labels';
+import { create } from 'zustand';
+import { useDerived, useSite } from '../derived';
 import { uid, useStore, type GardenKind, type Tool, type TreeKind } from '../store';
 import { house } from '../house/ambrozja17';
 import { toLocal } from '../house/geometry';
@@ -32,9 +33,9 @@ function Overlay({ children, order = 10 }: { children: React.ReactNode; order?: 
 
 function Label({ at, children, className = 'map-label' }: { at: P2; children: React.ReactNode; className?: string }) {
   return (
-    <Html position={v3(at)} center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
-      <div className={className}>{children}</div>
-    </Html>
+    <WorldLabel pos={v3(at)} className={className}>
+      {children}
+    </WorldLabel>
   );
 }
 
@@ -443,34 +444,50 @@ function ControlsTarget() {
   return <MapControls makeDefault enableRotate={false} screenSpacePanning target={[c[0], 0, c[1]]} zoomSpeed={1.2} minZoom={2} maxZoom={80} />;
 }
 
-export function PlacementView() {
-  const site = useSite();
-  const tool = useStore((s) => s.tool);
-  const [draft, setDraft] = useState<P2[]>([]);
-  const [cursor, setCursor] = useState<P2 | null>(null);
-  useEffect(() => setDraft([]), [tool]);
+/** transient plan-editing state shared between the in-canvas scene and the HTML overlay */
+export const usePlanUi = create<{ draft: P2[]; cursor: P2 | null; setDraft: (d: P2[]) => void; setCursor: (c: P2 | null) => void }>((set) => ({
+  draft: [],
+  cursor: null,
+  setDraft: (draft) => set({ draft }),
+  setCursor: (cursor) => set({ cursor }),
+}));
 
+export const planLabels = new LabelRegistry();
+export const PLAN_SUN = FIXED_SUN;
+
+/** everything the plan tab adds inside the shared <Canvas> (camera, controls, overlays, tools) */
+export function PlacementScene() {
+  const tool = useStore((s) => s.tool);
+  const { draft, cursor, setDraft, setCursor } = usePlanUi();
+  useEffect(() => setDraft([]), [tool, setDraft]);
   return (
-    <div className={`viewport tool-${tool}`}>
-      <Canvas shadows dpr={[1, 2]} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}>
-        <SiteContext.Provider value={site}>
-          <TopCamera />
-          <ControlsTarget />
-          <SceneContent fixedSun={FIXED_SUN} />
-          <RoadOverlay />
-          <SiteOverlay />
-          <GardenOverlay draft={draft} cursor={cursor} />
-          <HousePlanOverlay />
-          <SetbackOverlay />
-          <CornerOverlay />
-          <RotateHandle />
-          <Interaction draft={draft} setDraft={setDraft} setCursor={setCursor} />
-        </SiteContext.Provider>
-      </Canvas>
+    <LabelContext.Provider value={planLabels}>
+      <LabelProjector />
+      <TopCamera />
+      <ControlsTarget />
+      <RoadOverlay />
+      <SiteOverlay />
+      <GardenOverlay draft={draft} cursor={cursor} />
+      <HousePlanOverlay />
+      <SetbackOverlay />
+      <CornerOverlay />
+      <RotateHandle />
+      <Interaction draft={draft} setDraft={setDraft} setCursor={setCursor} />
+    </LabelContext.Provider>
+  );
+}
+
+/** HTML on top of the canvas for the plan tab */
+export function PlacementOverlay() {
+  const tool = useStore((s) => s.tool);
+  const draftLen = usePlanUi((s) => s.draft.length);
+  return (
+    <>
+      <LabelOverlay reg={planLabels} />
       <div className="compass" title="Północ układu PUWG 1992">Pn ↑</div>
       <Attribution />
-      <ToolHint tool={tool} draftLen={draft.length} />
-    </div>
+      <ToolHint tool={tool} draftLen={draftLen} />
+    </>
   );
 }
 

@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { loadSite, type Site } from './geo/site';
-import { SiteContext } from './derived';
+import { DerivedProvider, SiteContext } from './derived';
 import { useStore } from './store';
 import { centroid } from './placement/geom2d';
-import { PreviewView } from './views/PreviewView';
-import { PlacementView } from './views/PlacementView';
+import { Viewport } from './views/Viewport';
 import { PlacementPanel, PreviewPanel } from './ui/Panels';
 
 export function App() {
@@ -26,26 +25,30 @@ export function App() {
       .catch((e) => setErr(String(e)));
   }, []);
 
+  const switchTab = (t: 'preview' | 'placement') => set({ tab: t });
+
   if (err) return <div className="splash">Nie udało się wczytać danych działki: {err}<br />Uruchom <code>npm run fetch-site</code>.</div>;
   if (!site) return <div className="splash">Wczytywanie działki 664/2…</div>;
 
   return (
     <SiteContext.Provider value={site}>
+      <DerivedProvider>
       <div className="app">
         <header className="topbar">
           <div className="brand">
             <strong>Ambrozja 17</strong> <span>na działce nr {site.meta.parcelNumber} · {site.meta.region}, gm. {site.meta.commune}</span>
           </div>
           <nav className="tabs">
-            <button className={tab === 'preview' ? 'on' : ''} onClick={() => set({ tab: 'preview' })}>Podgląd 3D</button>
-            <button className={tab === 'placement' ? 'on' : ''} onClick={() => set({ tab: 'placement' })}>Ustawienie na działce</button>
+            <button className={tab === 'preview' ? 'on' : ''} onClick={() => switchTab('preview')}>Podgląd 3D</button>
+            <button className={tab === 'placement' ? 'on' : ''} onClick={() => switchTab('placement')}>Ustawienie na działce</button>
           </nav>
         </header>
         <main className="main">
           <aside className="sidebar">{tab === 'preview' ? <PreviewPanel /> : <PlacementPanel />}</aside>
-          {tab === 'preview' ? <PreviewView /> : <PlacementView />}
+          <Viewport />
         </main>
       </div>
+      </DerivedProvider>
     </SiteContext.Provider>
   );
 }

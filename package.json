@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "fetch-site": "tsx scripts/fetch-site.ts",
-    "fetch-map": "tsx scripts/fetch-site.ts --map-only"
+    "fetch-map": "tsx scripts/fetch-site.ts --map-only",
+    "fetch-landscape": "tsx scripts/fetch-site.ts --landscape-only"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",
