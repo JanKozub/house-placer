@@ -4,6 +4,8 @@ A web app for previewing a house on a real building plot before it is built. It 
 **Ambrozja 17 (BSA2409)** single-storey house in Three.js on parcel **664/2, Zakliczyn (gm. Siepraw)**,
 using the real terrain and the real sun position, and lets you place it on the plot.
 
+**Live:** https://jankozub.github.io/house-placer/ (UI in Polish; deployed from `main` by GitHub Actions)
+
 ## Features
 
 **3D preview**

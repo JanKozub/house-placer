@@ -4,6 +4,9 @@
  */
 import type { P2 } from '../placement/geom2d';
 
+/** site data folder, respecting Vite's base path (e.g. /house-placer/ on GitHub Pages) */
+const SITE = `${(import.meta.env?.BASE_URL ?? '/').replace(/\/$/, '')}/site`;
+
 export interface SiteMeta {
   parcelId: string;
   parcelNumber: string;
@@ -75,17 +78,17 @@ export function makeSite(meta: SiteMeta, parcelRing: [number, number][], neighbo
     dem,
     baseH: Math.floor(minH),
     trueNorth,
-    orthoUrl: hasOrtho ? '/site/ortho.jpg' : null,
+    orthoUrl: hasOrtho ? `${SITE}/ortho.jpg` : null,
   };
 }
 
 export async function loadSite(): Promise<Site> {
   const [meta, parcel, neighbors, demBuf, orthoHead] = await Promise.all([
-    fetch('/site/site.json').then((r) => r.json()),
-    fetch('/site/parcel.json').then((r) => r.json()),
-    fetch('/site/neighbors.json').then((r) => r.json()),
-    fetch('/site/dem.bin').then((r) => r.arrayBuffer()),
-    fetch('/site/ortho.jpg', { method: 'HEAD' }).catch(() => null),
+    fetch(`${SITE}/site.json`).then((r) => r.json()),
+    fetch(`${SITE}/parcel.json`).then((r) => r.json()),
+    fetch(`${SITE}/neighbors.json`).then((r) => r.json()),
+    fetch(`${SITE}/dem.bin`).then((r) => r.arrayBuffer()),
+    fetch(`${SITE}/ortho.jpg`, { method: 'HEAD' }).catch(() => null),
   ]);
   const hasOrtho = !!orthoHead && orthoHead.ok && Number(orthoHead.headers.get('content-length') ?? '1') > 1000 && (orthoHead.headers.get('content-type') ?? '').includes('image');
   return makeSite(meta, parcel.ring, neighbors, demBuf, hasOrtho);
