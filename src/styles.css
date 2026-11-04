@@ -109,3 +109,19 @@ code { background: #f1efea; padding: 1px 4px; border-radius: 4px; }
 .road-label { white-space: nowrap; font-size: 11px; font-weight: 600; color: #111827; background: rgba(255, 255, 255, 0.85); padding: 1px 6px; border-radius: 99px; border: 1px solid rgba(0, 0, 0, 0.15); }
 .attribution { position: absolute; right: 6px; bottom: 4px; font-size: 10px; color: #1f2937; background: rgba(255, 255, 255, 0.75); padding: 1px 6px; border-radius: 4px; max-width: 70%; text-align: right; }
 .attribution a { color: inherit; }
+
+.corner-label { font-size: 11px; font-weight: 800; color: #fff; background: #1e40af; width: 18px; height: 18px; line-height: 18px; text-align: center; border-radius: 50%; box-shadow: 0 0 0 1.5px #fff; }
+.dim-label.corner { font-size: 9.5px; font-weight: 600; padding: 0 4px; color: #1e3a8a; border-color: #93c5fd; border-width: 1px; }
+.edge-label b { color: #fff; }
+.corners { width: 100%; border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; }
+.corners th { color: var(--muted); font-weight: 600; padding: 2px; }
+.corners td { text-align: center; padding: 2px 3px; border-bottom: 1px solid #f1efea; }
+.corners td.na { color: #c7c3bb; text-align: center; }
+.corners td.min { font-weight: 700; }
+.corners td.warn { color: var(--warn); }
+.corners td.fail { color: var(--fail); }
+.seg { display: inline-flex; }
+.seg button { border-radius: 0; font-size: 11px; padding: 3px 7px; margin-left: -1px; }
+.seg button:first-child { border-radius: 6px 0 0 6px; }
+.seg button:last-child { border-radius: 0 6px 6px 0; }
+.corner-label.point { background: #0f766e; width: auto; min-width: 18px; padding: 0 4px; border-radius: 9px; font-size: 10px; }

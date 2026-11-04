@@ -7,6 +7,9 @@ export interface GardenArea { id: string; kind: GardenKind; points: P2[] }
 export type TreeKind = 'deciduous' | 'conifer' | 'shrub' | 'birch';
 export interface Tree { id: string; kind: TreeKind; x: number; z: number; height: number }
 
+/** what the plan view dimensions: corner → every plot edge, wall → facing edges (WT §12), or nothing */
+export type DimsMode = 'corners' | 'walls' | 'off';
+
 export type Tool =
   | 'select'
   | 'driveway'
@@ -59,7 +62,7 @@ export interface AppState {
   fenceEdges: number[];
   fenceHeight: number;
   buildingLine: P2[] | null;
-  layers: { parcelLawn: boolean; neighbors: boolean; ao: boolean; interiorLights: boolean; ortho: boolean; dims: boolean; plan: boolean; roads?: boolean };
+  layers: { parcelLawn: boolean; neighbors: boolean; ao: boolean; interiorLights: boolean; ortho: boolean; dims: boolean; plan: boolean; roads?: boolean; dimsMode?: DimsMode };
   tool: Tool;
   selected: string | null;
 
@@ -90,7 +93,7 @@ export const useStore = create<AppState>()(
       fenceEdges: [],
       fenceHeight: 1.5,
       buildingLine: null,
-      layers: { parcelLawn: true, neighbors: true, ao: true, interiorLights: true, ortho: true, dims: true, plan: true, roads: true },
+      layers: { parcelLawn: true, neighbors: true, ao: true, interiorLights: true, ortho: true, dims: true, plan: true, roads: true, dimsMode: 'corners' },
       tool: 'select',
       selected: null,
 

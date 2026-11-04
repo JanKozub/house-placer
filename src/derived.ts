@@ -5,7 +5,7 @@ import { house } from './house/ambrozja17';
 import { toLocal } from './house/geometry';
 import { toSite, type P2, type Placement } from './placement/geom2d';
 import { computeEarthwork, offsetPolygon } from './placement/earthwork';
-import { computeSetbacks, footprintSite } from './placement/setbacks';
+import { computeSetbacks, footprintSite, nearestCornerDistances } from './placement/setbacks';
 import { sunState } from './site/sun';
 import type { PlatformSpec } from './site/Terrain';
 
@@ -36,6 +36,7 @@ export function useDerived() {
   const floorLevelSetting = useStore((s) => s.floorLevel);
   const buildingLine = useStore((s) => s.buildingLine);
   const sun = useStore((s) => s.sun);
+  const garden = useStore((s) => s.garden);
 
   return useMemo(() => {
     const autoFloor = autoFloorLevel(site, placement);
@@ -47,7 +48,8 @@ export function useDerived() {
     const apron = offsetPolygon(fp, 0.5);
     const earthwork = computeEarthwork(platformPoly, platformH, (x, z) => site.dem.heightAt(x, z), 0.5);
     const setbacks = computeSetbacks(placement, site.parcel, buildingLine);
+    const corners = nearestCornerDistances(placement, site.parcel, garden.filter((g) => g.kind === 'patio').map((g) => g.points));
     const sunS = sunState(sun, site.meta.origin.lat, site.meta.origin.lon, site.trueNorth);
-    return { autoFloor, floorH, platformH, platform, footprint: fp, apron, earthwork, setbacks, sun: sunS, floorY: floorH - site.baseH };
-  }, [site, placement, floorLevelSetting, buildingLine, sun]);
+    return { autoFloor, floorH, platformH, platform, footprint: fp, apron, earthwork, setbacks, corners, sun: sunS, floorY: floorH - site.baseH };
+  }, [site, placement, floorLevelSetting, buildingLine, sun, garden]);
 }

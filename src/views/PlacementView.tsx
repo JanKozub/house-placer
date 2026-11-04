@@ -6,10 +6,11 @@ import { SceneContent } from './SceneContent';
 import { SiteContext, useDerived, useSite } from '../derived';
 import { uid, useStore, type GardenKind, type Tool, type TreeKind } from '../store';
 import { house } from '../house/ambrozja17';
-import { roofOutlineLocal, toLocal } from '../house/geometry';
+import { toLocal } from '../house/geometry';
 import { centroid, closestOnSegment, pointInPolygon, toSite, type P2 } from '../placement/geom2d';
 import { f } from '../ui/format';
 import { Attribution } from '../ui/Attribution';
+import { cornerLabel } from '../placement/setbacks';
 
 const OVER = 200; // overlay height (scene units) — drawn without depth test
 const FIXED_SUN = new THREE.Vector3(-0.35, 0.85, 0.4).normalize();
@@ -60,7 +61,6 @@ function HousePlanOverlay() {
   const d = useDerived();
   const toS = (X: number, Y: number) => toSite(toLocal(X, Y), pl);
   const fp = d.footprint;
-  const roof = roofOutlineLocal().map((p) => toSite(p, pl));
   const fillGeom = useMemo(() => {
     const s = new THREE.Shape(fp.map(([x, z]) => new THREE.Vector2(x, z)));
     const g = new THREE.ShapeGeometry(s);
@@ -77,7 +77,6 @@ function HousePlanOverlay() {
         </mesh>
       )}
       <Lines points={ring(fp)} color="#1f2a37" width={3} />
-      <Lines points={ring(roof)} color="#1f2a37" width={1.2} dashed opacity={0.7} />
       {showPlan && (
         <>
           {house.partitions.map(([x1, y1, x2, y2], i) => (
@@ -104,28 +103,61 @@ function HousePlanOverlay() {
   );
 }
 
-function SetbackOverlay() {
+/** distance from every house corner to its nearest plot edge (skipping lines through the house) */
+function CornerOverlay() {
   const d = useDerived();
-  const show = useStore((s) => s.layers.dims);
-  if (!show) return null;
-  const col = { ok: '#16a34a', warn: '#d97706', fail: '#dc2626' };
-  // every exterior wall → every boundary edge it faces; the nearest one carries the WT §12 status
+  const mode = useStore((s) => s.layers.dimsMode ?? 'corners');
+  const pl = useStore((s) => s.placement);
+  const showLabels = mode !== 'off';
+  const fp = d.footprint;
+  // corner letters, pushed slightly outward from the house centre
+  const corners = fp.flatMap((c, i) => {
+    if (!d.corners.some((m) => m.corner === i)) return []; // unmeasured (B) or no clear line to the boundary
+    const v: P2 = [c[0] - pl.x, c[1] - pl.z];
+    const L = Math.hypot(v[0], v[1]) || 1;
+    return [{ i, at: [c[0] + (v[0] / L) * 0.9, c[1] + (v[1] / L) * 0.9] as P2 }];
+  });
+  const color = (m: number) => (m < 3 ? '#dc2626' : m < 4 ? '#d97706' : '#1e40af');
   return (
     <Overlay order={30}>
-      {d.setbacks.walls.flatMap((w) =>
-        w.all.map((e, i) => {
-          const nearest = i === 0;
-          const mid: P2 = [(e.p[0] + e.q[0]) / 2, (e.p[1] + e.q[1]) / 2];
-          return (
-            <group key={`${w.wallId}-${e.edge}`}>
-              <Lines points={[v3(e.p), v3(e.q)]} color={nearest ? col[w.status] : '#475569'} width={nearest ? 2.5 : 1.5} dashed={!nearest} opacity={nearest ? 1 : 0.85} />
-              <Label at={mid} className={`dim-label ${nearest ? w.status : 'other'}`}>
-                {f(Math.max(0, e.d), 2)} m
-              </Label>
-            </group>
-          );
-        }),
-      )}
+      {mode === 'corners' &&
+        d.corners.map((c) => (
+          <group key={`${c.label}-${c.edge}`}>
+            <Lines points={[v3(c.p), v3(c.q)]} color={color(c.d)} width={1.3} opacity={0.9} />
+            <Label at={[(c.p[0] + c.q[0]) / 2, (c.p[1] + c.q[1]) / 2]} className={`dim-label corner ${c.d < 3 ? 'fail' : c.d < 4 ? 'warn' : ''}`}>
+              {c.label}: {f(c.d, 2)} m
+            </Label>
+          </group>
+        ))}
+      {showLabels && corners.map((c) => (
+        <Label key={c.i} at={c.at} className="corner-label">{cornerLabel(c.i)}</Label>
+      ))}
+      {showLabels &&
+        d.corners
+          .filter((c) => c.corner < 0)
+          .map((c) => (
+            <Label key={'pt-' + c.label} at={c.p} className="corner-label point">{c.label}</Label>
+          ))}
+    </Overlay>
+  );
+}
+
+function SetbackOverlay() {
+  const d = useDerived();
+  const mode = useStore((s) => s.layers.dimsMode ?? 'corners');
+  if (mode !== 'walls') return null;
+  const col = { ok: '#16a34a', warn: '#d97706', fail: '#dc2626' };
+  // nearest boundary in front of each wall, coloured by the WT §12 check
+  return (
+    <Overlay order={30}>
+      {d.setbacks.walls.map((w) => (
+        <group key={w.wallId}>
+          <Lines points={[v3(w.from), v3(w.to)]} color={col[w.status]} width={2.5} />
+          <Label at={[(w.from[0] + w.to[0]) / 2, (w.from[1] + w.to[1]) / 2]} className={`dim-label ${w.status}`}>
+            {f(Math.max(0, w.distance), 2)} m
+          </Label>
+        </group>
+      ))}
       {d.setbacks.buildingLine && (
         <Lines points={[v3(d.setbacks.buildingLine.from), v3(d.setbacks.buildingLine.to)]} color={d.setbacks.buildingLine.ok ? '#7c3aed' : '#dc2626'} width={2} />
       )}
@@ -152,7 +184,6 @@ function RoadOverlay() {
         }
         return (
           <group key={r.id}>
-            <Lines points={r.pts.map((p) => v3(p))} color={r.surface === 'asphalt' ? '#f8fafc' : '#e7d8b0'} width={1.2} dashed={r.surface !== 'asphalt'} opacity={0.7} />
             {bd < 140 && (
               <Label at={best} className="road-label">
                 {r.name ?? ROAD_LABEL[r.highway] ?? r.highway}
@@ -192,7 +223,7 @@ function SiteOverlay() {
         return (
           <group key={i}>
             {(on || tool === 'fence') && <Lines points={[v3(p, OVER + 1), v3(q, OVER + 1)]} color={on ? '#374151' : '#9ca3af'} width={on ? 6 : 4} dashed={!on} />}
-            <Label at={[(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]} className="edge-label">{f(L, 2)} m</Label>
+            <Label at={[(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]} className="edge-label"><b>{i + 1}</b> · {f(L, 2)} m</Label>
           </group>
         );
       })}
@@ -243,10 +274,8 @@ function RotateHandle() {
   const tool = useStore((s) => s.tool);
   if (tool !== 'select') return null;
   const h = toSite(toLocal(house.width / 2, house.depth + 3.2), pl);
-  const c: P2 = [pl.x, pl.z];
   return (
     <Overlay order={40}>
-      <Lines points={[v3(c), v3(h)]} color="#2563eb" width={1.5} dashed />
       <mesh position={[h[0], OVER + 4, h[1]]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={41}>
         <circleGeometry args={[0.7, 24]} />
         <meshBasicMaterial color="#2563eb" depthTest={false} transparent opacity={0.9} />
@@ -433,6 +462,7 @@ export function PlacementView() {
           <GardenOverlay draft={draft} cursor={cursor} />
           <HousePlanOverlay />
           <SetbackOverlay />
+          <CornerOverlay />
           <RotateHandle />
           <Interaction draft={draft} setDraft={setDraft} setCursor={setCursor} />
         </SiteContext.Provider>

@@ -9,7 +9,7 @@
  */
 import { house } from '../house/ambrozja17';
 import { toLocal } from '../house/geometry';
-import { centroid, pointInPolygon, segSegDistance, segToPolygon, toSite, type P2, type Placement } from './geom2d';
+import { centroid, closestOnSegment, pointInPolygon, segSegDistance, segToPolygon, toSite, type P2, type Placement } from './geom2d';
 
 export const LIMIT_WITH_OPENINGS = 4;
 export const LIMIT_BLANK = 3;
@@ -177,4 +177,109 @@ function sideOf(p: P2, line: P2[]) {
     }
   }
   return sign;
+}
+
+export interface CornerDistance {
+  /** label shown on the plan: A–H house corners, T1… terrace corners, P1… drawn patio corners */
+  label: string;
+  /** house outline corner index, or −1 for terrace/patio points */
+  corner: number;
+  /** parcel edge index (labelled 1, 2, …) */
+  edge: number;
+  d: number;
+  /** the measured point */
+  p: P2;
+  /** closest point on the edge */
+  q: P2;
+}
+
+export const cornerLabel = (i: number) => String.fromCharCode(65 + i);
+
+/** first parcel edge hit by the ray c + t·n (t > 0), or −1 */
+function rayHit(c: P2, n: P2, parcel: P2[]): number {
+  let best = Infinity, hit = -1;
+  for (let e = 0; e < parcel.length; e++) {
+    const a = parcel[e], b = parcel[(e + 1) % parcel.length];
+    const sx = b[0] - a[0], sz = b[1] - a[1];
+    const den = n[0] * sz - n[1] * sx;
+    if (Math.abs(den) < 1e-12) continue;
+    const t = ((a[0] - c[0]) * sz - (a[1] - c[1]) * sx) / den;
+    const u = ((a[0] - c[0]) * n[1] - (a[1] - c[1]) * n[0]) / den;
+    if (t > 1e-6 && u >= -1e-9 && u <= 1 + 1e-9 && t < best) { best = t; hit = e; }
+  }
+  return hit;
+}
+
+/** does the dimension line c → q pass through (or along) the house? */
+function throughHouse(c: P2, q: P2, fp: P2[]) {
+  const d = Math.hypot(q[0] - c[0], q[1] - c[1]);
+  if (d < 1e-6) return true;
+  const c2: P2 = [c[0] + ((q[0] - c[0]) / d) * 0.03, c[1] + ((q[1] - c[1]) / d) * 0.03];
+  if (pointInPolygon(c2, fp) || pointInPolygon([(c2[0] + q[0]) / 2, (c2[1] + q[1]) / 2], fp)) return true;
+  for (let k = 0; k < fp.length; k++) {
+    const s0 = fp[k], s1 = fp[(k + 1) % fp.length];
+    if (Math.hypot(s0[0] - c[0], s0[1] - c[1]) < 1e-6 || Math.hypot(s1[0] - c[0], s1[1] - c[1]) < 1e-6) continue; // walls meeting here
+    if (segSegDistance(c2, q, s0, s1).d < 1e-6) return true;
+  }
+  return false;
+}
+
+/**
+ * Distances from point c to the plot edges it faces: for each facing direction (outward normal of
+ * a wall/terrace/patio side meeting at c) the edge straight ahead is found, and the distance is
+ * measured perpendicular to that edge. Results are unique per edge, nearest first, at most `count`.
+ */
+function facedEdges(c: P2, normals: P2[], parcel: P2[], fp: P2[], count: number): { edge: number; d: number; q: P2 }[] {
+  const res: { edge: number; d: number; q: P2 }[] = [];
+  for (const n of normals) {
+    const e = rayHit(c, n, parcel);
+    if (e < 0 || res.some((r) => r.edge === e)) continue;
+    const q = closestOnSegment(c, parcel[e], parcel[(e + 1) % parcel.length]);
+    if (throughHouse(c, q, fp)) continue;
+    res.push({ edge: e, d: Math.hypot(q[0] - c[0], q[1] - c[1]), q });
+  }
+  return res.sort((a, b) => a.d - b.d).slice(0, count);
+}
+
+/** outward unit normals of the two polygon sides meeting at vertex i */
+function cornerNormals(poly: P2[], i: number): P2[] {
+  const out: P2[] = [];
+  for (const [a, b] of [[poly[(i + poly.length - 1) % poly.length], poly[i]], [poly[i], poly[(i + 1) % poly.length]]] as [P2, P2][]) {
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (L < 1e-9) continue;
+    let n: P2 = [-(b[1] - a[1]) / L, (b[0] - a[0]) / L];
+    const mid: P2 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    if (pointInPolygon([mid[0] + n[0] * 0.05, mid[1] + n[1] * 0.05], poly)) n = [-n[0], -n[1]];
+    out.push(n);
+  }
+  return out;
+}
+
+/**
+ * Corner dimensions for the plan: house corners (A–H, except house.unmeasuredCorners), the terrace
+ * corner (T) and drawn patio corners (P1…), each measured to the plot edge it faces (see
+ * facedEdges) rather than simply the closest one. Corners in house.twoEdgeCorners get both faced
+ * edges; inner corners whose line would run along or through the house are left out.
+ */
+export function nearestCornerDistances(pl: Placement, parcel: P2[], patios: P2[][] = []): CornerDistance[] {
+  const fp = footprintSite(pl);
+  const out: CornerDistance[] = [];
+  const add = (label: string, corner: number, c: P2, normals: P2[], count = 1) => {
+    for (const r of facedEdges(c, normals, parcel, fp, count)) out.push({ label, corner, edge: r.edge, d: r.d, p: c, q: r.q });
+  };
+  fp.forEach((c, i) => {
+    if (!house.unmeasuredCorners.includes(i)) add(cornerLabel(i), i, c, cornerNormals(fp, i), house.twoEdgeCorners.includes(i) ? 2 : 1);
+  });
+  // plan-space facing directions → site-space (rotation/mirror only)
+  const o = toSite([0, 0], pl);
+  const dirToSite = ([nx, ny]: P2): P2 => {
+    const t = toSite([nx, ny], pl);
+    return [t[0] - o[0], t[1] - o[1]];
+  };
+  house.terraceCorners.forEach((tc, i) =>
+    add(house.terraceCorners.length > 1 ? `T${i + 1}` : 'T', -1, toSite(toLocal(...tc.at), pl), tc.faces.map(dirToSite)),
+  );
+  let n = 0;
+  for (const poly of patios) poly.forEach((c, i) => add(`P${++n}`, -1, c, cornerNormals(poly, i)));
+  return out;
 }

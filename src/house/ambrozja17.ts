@@ -195,6 +195,13 @@ export const house = {
     { x0: MAIN_X1 + 1.05, x1: MAIN_X1 + 1.35, y0: 13.95, y1: 15.15, top: -0.47 },
   ] as Slab[],
 
+  /** terrace corner measured to the boundary it faces (the north-west corner of the lowest step), with its outward sides */
+  terraceCorners: [{ at: [0.14, 0.29] as Vec2, faces: [[0, -1], [-1, 0]] as Vec2[] }],
+  /** house corners (outline indices) not dimensioned on the plan — B, the inner terrace corner */
+  unmeasuredCorners: [1] as number[],
+  /** house corners dimensioned to both boundaries they face — D and E, the garage-wing corners */
+  twoEdgeCorners: [3, 4] as number[],
+
   /** carport (wiata) west of the garage, under the main roof, with two clad posts */
   porch: { x0: MAIN_X0, x1: GAR_X0, y0: LIV_Y1, y1: 22.85, posts: [[8.125, 17.7], [8.125, 22.575]] as Vec2[], postSize: 0.55 },
 } as const;

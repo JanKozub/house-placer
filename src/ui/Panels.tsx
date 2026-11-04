@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { useDerived, useSite, autoFloorLevel } from '../derived';
-import { DEFAULT_PALETTE, PERSIST_KEYS, useStore, type Palette, type Tool } from '../store';
+import { DEFAULT_PALETTE, PERSIST_KEYS, useStore, type DimsMode, type Palette, type Tool } from '../store';
 import { house, roofTopAt } from '../house/ambrozja17';
 import { sunTimes } from '../site/sun';
 import { carvedHeight } from '../site/Terrain';
@@ -199,6 +199,11 @@ export function PlacementPanel() {
         </p>
       </Section>
 
+      <Section title="Narożniki domu i tarasu → najbliższa granica">
+        <CornerTable />
+        <p className="hint">Odległość od każdego narożnika domu (A–H), narożnika tarasu (T) i narysowanych patio (P…) do najbliższej krawędzi działki (dla D i E do dwóch najbliższych) (numery 1–{site.parcel.length} przy krawędziach). Pomiary przechodzące przez dom są pomijane. Czerwone &lt; 3 m, pomarańczowe &lt; 4 m.</p>
+      </Section>
+
       <Section title="Poziom posadzki i roboty ziemne">
         <div className="row">
           <label className="grow">±0,00 (m n.p.m.)
@@ -244,7 +249,14 @@ export function PlacementPanel() {
 
       <Section title="Warstwy i plik">
         <Toggle label="Rzut domu (pomieszczenia, otwory)" value={layers.plan} onChange={(v) => setLayers({ plan: v })} />
-        <Toggle label="Wymiary odległości od granic" value={layers.dims} onChange={(v) => setLayers({ dims: v })} />
+        <div className="row">
+          <span className="grow">Wymiary na planie</span>
+          <div className="seg">
+            {([['corners', 'Narożniki'], ['walls', 'Ściany (WT)'], ['off', 'Brak']] as [DimsMode, string][]).map(([m, l]) => (
+              <button key={m} className={(layers.dimsMode ?? 'corners') === m ? 'on' : ''} onClick={() => setLayers({ dimsMode: m })}>{l}</button>
+            ))}
+          </div>
+        </div>
         <Toggle label="Sąsiednie działki" value={layers.neighbors} onChange={(v) => setLayers({ neighbors: v })} />
         <Toggle label="Drogi (OpenStreetMap)" value={layers.roads !== false} onChange={(v) => setLayers({ roads: v })} />
         <div className="chips">
@@ -318,5 +330,25 @@ function Profile() {
       <text x={4} y={H - 4} fontSize={9} fill="#6b7280">← tył</text>
       <text x={W - 4} y={H - 4} fontSize={9} fill="#6b7280" textAnchor="end">przód →</text>
     </svg>
+  );
+}
+
+function CornerTable() {
+  const d = useDerived();
+  return (
+    <table className="corners">
+      <thead>
+        <tr><th>Narożnik</th><th>Najbliższa krawędź</th><th>Odległość</th></tr>
+      </thead>
+      <tbody>
+        {d.corners.map((c) => (
+          <tr key={`${c.label}-${c.edge}`}>
+            <th>{c.label}</th>
+            <td>{c.edge + 1}</td>
+            <td className={c.d < 3 ? 'fail' : c.d < 4 ? 'warn' : ''}>{f(c.d, 2)} m</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

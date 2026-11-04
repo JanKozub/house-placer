@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { buildHouse, footprintLocal } from './house/geometry';
 import { house, roofTopAt } from './house/ambrozja17';
 import { pointInPolygon, polygonArea, toHouse, toSite, type P2 } from './placement/geom2d';
-import { computeSetbacks, facingDistance, footprintSite } from './placement/setbacks';
+import { computeSetbacks, facingDistance, footprintSite, nearestCornerDistances } from './placement/setbacks';
 import { computeEarthwork, offsetPolygon } from './placement/earthwork';
 import { makeSite } from './geo/site';
 import { sunState, warsawDate } from './site/sun';
@@ -115,6 +115,42 @@ describe('setbacks', () => {
     const pent: P2[] = [[-30, -30], [30, -30], [30, 10], [10, 30], [-30, 30]];
     const r2 = computeSetbacks({ x: 0, z: 0, bearing: 180, mirror: false }, pent);
     expect(r2.walls.some((w) => w.all.length >= 2)).toBe(true);
+  });
+
+  it('gives each house corner its distance to the nearest plot edge', () => {
+    const pl = { x: 0, z: 0, bearing: 180, mirror: false };
+    const r = nearestCornerDistances(pl, big);
+    // axis-aligned in a square plot, the two inner corners of the L could only be measured
+    // along a wall, so they are skipped; the six outer corners all get a distance
+    expect(r.filter((c) => c.corner >= 0).map((c) => c.label)).toEqual(['A', 'C', 'D', 'D', 'E', 'E', 'F', 'H']);
+    // D and E get both faced edges, distinct and nearest first
+    for (const L of ['D', 'E']) {
+      const two = r.filter((c) => c.label === L);
+      expect(two[0].edge).not.toBe(two[1].edge);
+      expect(two[0].d).toBeLessThanOrEqual(two[1].d);
+    }
+    // the terrace corner is measured too
+    expect(r.filter((c) => c.label === 'T').length).toBe(1);
+    // corner A = plan (0, 6.60) → site (−8.425, −4.825): nearest edge is x = −30
+    const A = r.find((c) => c.corner === 0)!;
+    expect(A.d).toBeCloseTo(30 - 8.425, 6);
+    // no measurement may pass through the house
+    const fp = footprintSite(pl);
+    for (const c of r) {
+      const mid: P2 = [(c.p[0] + c.q[0]) / 2, (c.p[1] + c.q[1]) / 2];
+      expect(pointInPolygon(mid, fp)).toBe(false);
+    }
+  });
+
+  it('measures corners to the plot edges they face, not simply the closest', () => {
+    // corner D (plan 16.85, 0 → site 8.425, −11.425) is closest to the diagonal cut (≈15.7 m),
+    // but its walls face north (top edge) and east (right edge)
+    const cut: P2[] = [[-30, -30], [12, -30], [30, -12], [30, 30], [-30, 30]];
+    const r = nearestCornerDistances({ x: 0, z: 0, bearing: 180, mirror: false }, cut);
+    const D = r.filter((c) => c.label === 'D');
+    expect(D.map((c) => c.edge).sort()).toEqual([0, 2]);
+    expect(D.find((c) => c.edge === 0)!.d).toBeCloseTo(30 - 11.425, 6);
+    expect(D.find((c) => c.edge === 2)!.d).toBeCloseTo(30 - 8.425, 6);
   });
 
   it('ignores boundaries that are only diagonal from a wall end', () => {
