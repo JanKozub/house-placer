@@ -2,6 +2,4 @@ node_modules
 dist
 .DS_Store
 .claude/
-# project drawings are copyrighted by the designer — keep them local
-docs/*.pdf
 *.tsbuildinfo

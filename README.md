@@ -52,4 +52,4 @@ If no orthophoto is available, the ground falls back to a synthetic field textur
 - Parcel geometry and terrain © GUGiK (geoportal.gov.pl). Distances and setbacks are indicative.
   They are not a substitute for a surveyor's site plan (mapa do celów projektowych) or for the
   local zoning plan (MPZP/WZ).
-- Project drawings belong to their author (Domy w Stylu) and are not included in this repository.
+- `docs/` holds the project drawings (ground-floor plan and section). They are © Domy w Stylu, and their copyright notice applies.
