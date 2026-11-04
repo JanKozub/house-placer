@@ -10,34 +10,9 @@
  * ±0.00 = finished ground floor level; surrounding ground at −0.62.
  */
 
-export type Vec2 = [number, number];
+import type { HouseDef } from './types';
 
-export type OpeningKind = 'window' | 'door' | 'terraceDoor' | 'hs' | 'fixed' | 'garage' | 'entrance';
-
-export interface Opening {
-  /** id of the exterior wall edge */
-  wall: string;
-  /** centre position along the wall, as the absolute plan coordinate (X for horizontal walls, Y for vertical) */
-  at: number;
-  width: number;
-  height: number;
-  sill: number;
-  kind: OpeningKind;
-  /** number of glazed panes (mullions = panes − 1) */
-  panes?: number;
-  /** project symbol, for reference */
-  ref?: string;
-}
-
-export interface WallEdge {
-  id: string;
-  a: Vec2;
-  b: Vec2;
-}
-
-export interface Slab { x0: number; x1: number; y0: number; y1: number; top: number }
-
-export const PITCH_DEG = 30;
+const PITCH_DEG = 30;
 const T = Math.tan((PITCH_DEG * Math.PI) / 180);
 
 const WING_W = 9.05; // both wings (plan chains: 905)
@@ -47,12 +22,20 @@ const LIV_Y0 = 6.6; // living wing (chain 660 | 905 | 720)
 const LIV_Y1 = 15.65;
 const GAR_X0 = 10.4; // garage west wall face (chain 20+25+575+25)
 const RIDGE_X = (MAIN_X0 + MAIN_X1) / 2; // 12.325
-const RIDGE_Y = (LIV_Y0 + LIV_Y1) / 2; // 11.125
-const HEAD = 2.35; // window/door head level (section)
 
-export const house = {
+const HEAD = 2.35; // window/door head level (section)
+const RIDGE_TOP = 6.32;
+const TOP_AT_WALL = RIDGE_TOP - (WING_W / 2) * T;
+const EAVE_O = 1.0; // eave overhang
+const GABLE_O = 0.5; // gable overhang
+const SOFFIT = 2.73;
+const Y1 = 22.85;
+
+export const ambrozja17: HouseDef = {
+  id: 'ambrozja17',
   name: 'Ambrozja 17',
   code: 'BSA2409',
+  designer: 'Domy w Stylu',
   width: 16.85,
   depth: 22.85,
   usableArea: 167.84,
@@ -67,27 +50,68 @@ export const house = {
   ceilingHeight: 2.62,
   /** top of ring beam (wieniec) */
   wallTop: 2.76,
-  slabThickness: 0.3,
-  garageFloor: -0.27,
 
-  roof: {
-    ridgeTop: 6.32,
-    thickness: 0.3,
-    eaveOverhang: 1.0,
-    gableOverhang: 0.5,
-    /** underside of the boxed eave soffit */
-    soffit: 2.73,
-    /** roof top-surface height at the outer wall face */
-    get topAtWall() {
-      return house.roof.ridgeTop - (WING_W / 2) * T;
-    },
-    ridgeX: RIDGE_X,
-    ridgeY: RIDGE_Y,
-    wingWidth: WING_W,
-    main: { x0: MAIN_X0, x1: MAIN_X1, y0: 0, y1: 22.85 },
-    living: { x0: 0, y0: LIV_Y0, y1: LIV_Y1 },
-    chimneys: [{ x: 8.6, y: 9.88, w: 0.58, d: 0.84, top: 6.7 }],
-  },
+  roof: (() => {
+    const o = EAVE_O, g = GABLE_O;
+    const x0 = MAIN_X0, x1 = MAIN_X1, y1 = Y1, L0 = LIV_Y0, L1 = LIV_Y1, R = RIDGE_X;
+    const edgeTop = TOP_AT_WALL - o * T;
+    return {
+      pitchDeg: PITCH_DEG,
+      thickness: 0.3,
+      ridgeTop: RIDGE_TOP,
+      topAtWall: TOP_AT_WALL,
+      eaveOverhang: o,
+      soffit: SOFFIT,
+      // two gable wings meeting at a common ridge height, with valleys in the inner corners
+      volumes: [
+        { kind: 'gable', ridge: 'y', x0: x0 - o, x1: x1 + o, y0: -g, y1: y1 + g, edgeTop },
+        { kind: 'gable', ridge: 'x', x0: -g, x1: R, y0: L0 - o, y1: L1 + o, edgeTop },
+      ],
+      outline: [[-g, L0 - o], [x0 - o, L0 - o], [x0 - o, -g], [x1 + o, -g], [x1 + o, y1 + g], [x0 - o, y1 + g], [x0 - o, L1 + o], [-g, L1 + o]],
+      chimneys: [{ x: 8.6, y: 9.88, w: 0.58, d: 0.84, top: 6.7 }],
+      soffits: [
+        [[x1, -g], [x1 + o, -g], [x1 + o, y1 + g], [x1, y1 + g]],
+        [[x0, -g], [x0 - o, -g], [x0 - o, L0 - o], [x0, L0]],
+        [[x0, L1], [x0 - o, L1 + o], [x0 - o, y1 + g], [x0, y1 + g]],
+        [[-g, L0 - o], [x0 - o, L0 - o], [x0, L0], [-g, L0]],
+        [[-g, L1], [x0, L1], [x0 - o, L1 + o], [-g, L1 + o]],
+      ],
+      fasciae: [
+        [[x1 + o, -g], [x1 + o, y1 + g]],
+        [[x0 - o, -g], [x0 - o, L0 - o]],
+        [[x0 - o, L1 + o], [x0 - o, y1 + g]],
+        [[-g, L0 - o], [x0 - o, L0 - o]],
+        [[-g, L1 + o], [x0 - o, L1 + o]],
+      ],
+      caps: [
+        { at: [x1, -g], out: [1, 0] },
+        { at: [x1, y1 + g], out: [1, 0] },
+        { at: [x0, -g], out: [-1, 0] },
+        { at: [x0, y1 + g], out: [-1, 0] },
+        { at: [-g, L0], out: [0, -1] },
+        { at: [-g, L1], out: [0, 1] },
+      ],
+      gutters: [
+        [[x1 + o + 0.08, -g], [x1 + o + 0.08, y1 + g]],
+        [[x0 - o - 0.08, -g], [x0 - o - 0.08, L0 - o]],
+        [[x0 - o - 0.08, L1 + o], [x0 - o - 0.08, y1 + g]],
+        [[-g, L0 - o - 0.08], [x0 - o, L0 - o - 0.08]],
+        [[-g, L1 + o + 0.08], [x0 - o, L1 + o + 0.08]],
+      ],
+      pipes: [
+        { wall: [x1 + 0.08, 0.4], gutter: [x1 + o + 0.08, 0.4] },
+        { wall: [x1 + 0.08, y1 - 0.4], gutter: [x1 + o + 0.08, y1 - 0.4] },
+        { wall: [x0 - 0.08, 0.4], gutter: [x0 - o - 0.08, 0.4] },
+        { wall: [0.4, L0 - 0.08], gutter: [0.4, L0 - o - 0.08] },
+        { wall: [0.4, L1 + 0.08], gutter: [0.4, L1 + o + 0.08] },
+      ],
+      gables: [
+        { a: [x0, 0], b: [x1, 0], base: SOFFIT - 0.02 },
+        { a: [x1, y1], b: [x0, y1], base: SOFFIT },
+        { a: [0, L1], b: [0, L0], base: SOFFIT - 0.02 },
+      ],
+    };
+  })(),
 
   /** exterior wall outline, clockwise as drawn (Y down) */
   outline: [
@@ -99,18 +123,18 @@ export const house = {
     [GAR_X0, 22.85],
     [GAR_X0, LIV_Y1],
     [0, LIV_Y1],
-  ] as Vec2[],
+  ],
 
   walls: [
-    { id: 'livN', a: [0, LIV_Y0], b: [MAIN_X0, LIV_Y0] },
-    { id: 'bedW', a: [MAIN_X0, LIV_Y0], b: [MAIN_X0, 0] },
-    { id: 'gableN', a: [MAIN_X0, 0], b: [MAIN_X1, 0] },
-    { id: 'east', a: [MAIN_X1, 0], b: [MAIN_X1, 22.85] },
-    { id: 'gableS', a: [MAIN_X1, 22.85], b: [GAR_X0, 22.85] },
-    { id: 'garW', a: [GAR_X0, 22.85], b: [GAR_X0, LIV_Y1] },
-    { id: 'front', a: [GAR_X0, LIV_Y1], b: [0, LIV_Y1] },
-    { id: 'gableW', a: [0, LIV_Y1], b: [0, LIV_Y0] },
-  ] as WallEdge[],
+    { id: 'livN', label: 'Salon → taras', a: [0, LIV_Y0], b: [MAIN_X0, LIV_Y0] },
+    { id: 'bedW', label: 'Sypialnia → taras', a: [MAIN_X0, LIV_Y0], b: [MAIN_X0, 0] },
+    { id: 'gableN', label: 'Szczyt tylny', a: [MAIN_X0, 0], b: [MAIN_X1, 0] },
+    { id: 'east', label: 'Strona pokoi', a: [MAIN_X1, 0], b: [MAIN_X1, 22.85] },
+    { id: 'gableS', label: 'Szczyt garażu (front)', a: [MAIN_X1, 22.85], b: [GAR_X0, 22.85] },
+    { id: 'garW', label: 'Garaż / wiata', a: [GAR_X0, 22.85], b: [GAR_X0, LIV_Y1], top: SOFFIT }, // carport side: up to the soffit
+    { id: 'front', label: 'Front (kuchnia, wejście)', a: [GAR_X0, LIV_Y1], b: [0, LIV_Y1] },
+    { id: 'gableW', label: 'Szczyt salonu', a: [0, LIV_Y1], b: [0, LIV_Y0] },
+  ],
 
   openings: [
     // living room → terrace: OBD17 180×235 door + FIX1 90×235 (one 270 unit), FIX2 180×235
@@ -131,7 +155,7 @@ export const house = {
     { wall: 'front', at: 9.295, width: 1.01, height: 2.1, sill: 0, kind: 'entrance', ref: 'Dz1' },
     // west gable: FIX3 270×235 living-room glazing
     { wall: 'gableW', at: 10.25, width: 2.7, height: HEAD, sill: 0, kind: 'fixed', panes: 3, ref: 'FIX3' },
-  ] as Opening[],
+  ],
 
   /** interior partitions [x1,y1,x2,y2] (approximate, for views through glass) */
   partitions: [
@@ -152,7 +176,7 @@ export const house = {
     [GAR_X0, 15.0, 16.85, 15.0],
     [12.9, 11.6, 12.9, 15.0],
     [11.0, 11.6, 11.0, 15.0],
-  ] as [number, number, number, number][],
+  ],
 
   /** room labels for the plan view (numbers as in the project) */
   rooms: [
@@ -172,7 +196,7 @@ export const house = {
     { name: '1/15 Pralnia', area: 4.35, at: [11.95, 13.3] },
     { name: '1/14 Kotłownia', area: 7.52, at: [14.9, 13.3] },
     { name: '1/17 Garaż', area: 38.87, at: [13.6, 19.0] },
-  ] as { name: string; area: number; at: Vec2 }[],
+  ],
 
   /** paved slabs: terrace levels (−0.02 / −0.17 / −0.32), entrance & boiler-room steps, carport */
   paving: [
@@ -193,38 +217,26 @@ export const house = {
     { x0: MAIN_X1 + 0.45, x1: MAIN_X1 + 0.75, y0: 13.95, y1: 15.15, top: -0.17 },
     { x0: MAIN_X1 + 0.75, x1: MAIN_X1 + 1.05, y0: 13.95, y1: 15.15, top: -0.32 },
     { x0: MAIN_X1 + 1.05, x1: MAIN_X1 + 1.35, y0: 13.95, y1: 15.15, top: -0.47 },
-  ] as Slab[],
+  ],
 
   /** terrace corner measured to the boundary it faces (the north-west corner of the lowest step), with its outward sides */
-  terraceCorners: [{ at: [0.14, 0.29] as Vec2, faces: [[0, -1], [-1, 0]] as Vec2[] }],
+  terraceCorners: [{ at: [0.14, 0.29], faces: [[0, -1], [-1, 0]] }],
   /** house corners (outline indices) not dimensioned on the plan — B, the inner terrace corner */
-  unmeasuredCorners: [1] as number[],
+  unmeasuredCorners: [1],
   /** house corners dimensioned to both boundaries they face — D and E, the garage-wing corners */
-  twoEdgeCorners: [3, 4] as number[],
+  twoEdgeCorners: [3, 4],
 
   /** carport (wiata) west of the garage, under the main roof, with two clad posts */
-  porch: { x0: MAIN_X0, x1: GAR_X0, y0: LIV_Y1, y1: 22.85, posts: [[8.125, 17.7], [8.125, 22.575]] as Vec2[], postSize: 0.55 },
-} as const;
+  porches: [{ x0: MAIN_X0, x1: GAR_X0, y0: LIV_Y1, y1: 22.85, posts: [[8.125, 17.7], [8.125, 22.575]], postSize: 0.55, ceiling: SOFFIT }],
 
-/** centre of the outline bbox; house-local origin */
-export const HOUSE_CENTER: Vec2 = [house.width / 2, house.depth / 2];
-
-/** roof top-surface height (relative to ±0.00) at plan point, or null outside the roof */
-export function roofTopAt(X: number, Y: number): number | null {
-  const r = house.roof;
-  const Hw = r.topAtWall;
-  const o = r.eaveOverhang, g = r.gableOverhang;
-  let h: number | null = null;
-  // main wing: ridge along Y
-  if (X >= r.main.x0 - o && X <= r.main.x1 + o && Y >= r.main.y0 - g && Y <= r.main.y1 + g) {
-    h = Hw + (r.wingWidth / 2 - Math.abs(X - r.ridgeX)) * T;
-  }
-  // living wing: ridge along X
-  if (X >= r.living.x0 - g && X <= r.ridgeX && Y >= r.living.y0 - o && Y <= r.living.y1 + o) {
-    const hl = Hw + (r.wingWidth / 2 - Math.abs(Y - r.ridgeY)) * T;
-    h = h === null ? hl : Math.max(h, hl);
-  }
-  return h;
-}
-
-export const TAN_PITCH = T;
+  // a few broad lights (each point light costs every fragment of every lit material)
+  lights: [[3.2, 9.3], [9.6, 12.0], [14.5, 7.2]],
+  wallLamps: [[9.25 + 0.9, LIV_Y1 + 0.03], [GAR_X0 - 0.03, 20.2], [2.9, LIV_Y0 - 0.03], [MAIN_X0 - 0.03, 1.4]],
+  views: {
+    valley: { at: 'valleyWindow', h: 1.6, look: 'valley', label: 'Na dolinę' },
+    terrace: { at: [4.6, 2.6], h: 1.6, look: [-0.7, -0.7], label: 'Z tarasu' },
+    living: { at: [1.3, 10.25], h: 1.6, look: [-1, 0], label: 'Z salonu' },
+    kitchen: { at: [5.44, 14.5], h: 1.6, look: [0, 1], label: 'Z kuchni' },
+    bedroom: { at: [15.3, 7.15], h: 1.6, look: [1, 0], label: 'Z pokoju' },
+  },
+};

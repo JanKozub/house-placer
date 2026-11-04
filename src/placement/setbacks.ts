@@ -7,7 +7,7 @@
  * onto the wall falls within the wall's length, on its outer side). The absolute minimum
  * distance from any part of the house to the boundary is reported separately.
  */
-import { house } from '../house/ambrozja17';
+import type { HouseDef } from '../house/types';
 import { toLocal } from '../house/geometry';
 import { centroid, closestOnSegment, pointInPolygon, segSegDistance, segToPolygon, toSite, type P2, type Placement } from './geom2d';
 
@@ -36,16 +36,16 @@ export interface SetbackResult {
   buildingLine?: { distance: number; from: P2; to: P2; ok: boolean };
 }
 
-export function footprintSite(pl: Placement): P2[] {
-  return house.outline.map(([X, Y]) => toSite(toLocal(X, Y), pl));
+export function footprintSite(house: HouseDef, pl: Placement): P2[] {
+  return house.outline.map(([X, Y]) => toSite(toLocal(house, X, Y), pl));
 }
 
-export function computeSetbacks(pl: Placement, parcel: P2[], buildingLine?: P2[] | null): SetbackResult {
-  const fp = footprintSite(pl);
+export function computeSetbacks(house: HouseDef, pl: Placement, parcel: P2[], buildingLine?: P2[] | null): SetbackResult {
+  const fp = footprintSite(house, pl);
 
   const walls: WallSetback[] = house.walls.map((w) => {
-    const a = toSite(toLocal(...w.a), pl);
-    const b = toSite(toLocal(...w.b), pl);
+    const a = toSite(toLocal(house, ...w.a), pl);
+    const b = toSite(toLocal(house, ...w.b), pl);
     const hasOpenings = house.openings.some((o) => o.wall === w.id);
     const required = hasOpenings ? LIMIT_WITH_OPENINGS : LIMIT_BLANK;
     const all = facingDistances(a, b, fp, parcel);
@@ -261,8 +261,8 @@ function cornerNormals(poly: P2[], i: number): P2[] {
  * facedEdges) rather than simply the closest one. Corners in house.twoEdgeCorners get both faced
  * edges; inner corners whose line would run along or through the house are left out.
  */
-export function nearestCornerDistances(pl: Placement, parcel: P2[], patios: P2[][] = []): CornerDistance[] {
-  const fp = footprintSite(pl);
+export function nearestCornerDistances(house: HouseDef, pl: Placement, parcel: P2[], patios: P2[][] = []): CornerDistance[] {
+  const fp = footprintSite(house, pl);
   const out: CornerDistance[] = [];
   const add = (label: string, corner: number, c: P2, normals: P2[], count = 1) => {
     for (const r of facedEdges(c, normals, parcel, fp, count)) out.push({ label, corner, edge: r.edge, d: r.d, p: c, q: r.q });
@@ -277,7 +277,7 @@ export function nearestCornerDistances(pl: Placement, parcel: P2[], patios: P2[]
     return [t[0] - o[0], t[1] - o[1]];
   };
   house.terraceCorners.forEach((tc, i) =>
-    add(house.terraceCorners.length > 1 ? `T${i + 1}` : 'T', -1, toSite(toLocal(...tc.at), pl), tc.faces.map(dirToSite)),
+    add(house.terraceCorners.length > 1 ? `T${i + 1}` : 'T', -1, toSite(toLocal(house, ...tc.at), pl), tc.faces.map(dirToSite)),
   );
   let n = 0;
   for (const poly of patios) poly.forEach((c, i) => add(`P${++n}`, -1, c, cornerNormals(poly, i)));

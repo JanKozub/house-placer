@@ -34,6 +34,7 @@ code { background: #f1efea; padding: 1px 4px; border-radius: 4px; }
 .topbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
 .brand strong { font-size: 15px; }
 .brand span { color: var(--muted); margin-left: 6px; }
+.brand select.project-select { width: auto; font-size: 15px; font-weight: 700; padding: 3px 6px; cursor: pointer; }
 .tabs { display: flex; gap: 4px; }
 .tabs button { padding: 6px 14px; }
 .main { flex: 1; display: flex; min-height: 0; }

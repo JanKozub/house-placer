@@ -1,7 +1,9 @@
 import { useDeferredValue, useRef } from 'react';
 import { useDerived, useSite, autoFloorLevel } from '../derived';
 import { DEFAULT_PALETTE, PERSIST_KEYS, useStore, type DimsMode, type Palette, type Tool } from '../store';
-import { house, roofTopAt } from '../house/ambrozja17';
+import { roofTopAt } from '../house/roof';
+import { HOUSES } from '../house/projects';
+import { cornerLabel } from '../placement/setbacks';
 import { sunTimes } from '../site/sun';
 import { carvedHeight } from '../site/Terrain';
 import { centroid, polygonArea, toSite } from '../placement/geom2d';
@@ -12,11 +14,6 @@ const KIND_NAMES: Record<GardenKind, string> = { driveway: 'podjazd', path: 'śc
 
 const fmtTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(Math.round(m % 60)).padStart(2, '0')}`;
 const MONTHS = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'];
-const WALL_NAMES: Record<string, string> = {
-  livN: 'Salon → taras', bedW: 'Sypialnia → taras', gableN: 'Szczyt tylny', east: 'Strona pokoi', gableS: 'Szczyt garażu (front)',
-  garW: 'Garaż / wiata', front: 'Front (kuchnia, wejście)', gableW: 'Szczyt salonu',
-};
-
 function Section({ title, children, right }: { title: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <section className="panel-section">
@@ -47,6 +44,7 @@ export function PreviewPanel() {
   const layers = useStore((s) => s.layers);
   const setLayers = useStore((s) => s.setLayers);
   const d = useDeferredValue(useDerived());
+  const house = d.house;
   const times = sunTimes(sun, site.meta.origin.lat, site.meta.origin.lon);
   const presets: [string, Partial<typeof sun>][] = [
     ['Letni wieczór', { month: 6, day: 21, minutes: 19 * 60 + 30 }],
@@ -117,6 +115,7 @@ export function PreviewPanel() {
 export function PlacementPanel() {
   const site = useSite();
   const d = useDeferredValue(useDerived());
+  const house = d.house;
   const pl = useDeferredValue(useStore((s) => s.placement));
   const setPlacement = useStore((s) => s.setPlacement);
   const floorLevel = useStore((s) => s.floorLevel);
@@ -146,16 +145,18 @@ export function PlacementPanel() {
   const exportJson = () => {
     const s = useStore.getState() as unknown as Record<string, unknown>;
     const data = Object.fromEntries(PERSIST_KEYS.map((k) => [k, s[k]]));
-    const blob = new Blob([JSON.stringify({ app: 'house-placer', version: 1, parcel: site.meta.parcelId, ...data }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ app: 'house-placer', version: 2, parcel: site.meta.parcelId, ...data }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `ambrozja17-dz${site.meta.parcelNumber.replace('/', '-')}.json`;
+    a.download = `${house.id}-dz${site.meta.parcelNumber.replace('/', '-')}.json`;
     a.click();
   };
   const importJson = async (f: File) => {
     const j = JSON.parse(await f.text());
     const patch = Object.fromEntries(PERSIST_KEYS.filter((k) => k in j).map((k) => [k, j[k]]));
-    set(patch);
+    // v1 files had a single house (Ambrozja 17); its placement belongs to that project
+    const projectId = j.projectId ?? 'ambrozja17';
+    set({ ...patch, projectId: HOUSES[projectId] ? projectId : useStore.getState().projectId, projectState: j.projectState ?? useStore.getState().projectState });
   };
 
   return (
@@ -186,7 +187,7 @@ export function PlacementPanel() {
               .sort((a, b) => a.distance - a.required - (b.distance - b.required))
               .map((w) => (
                 <tr key={w.wallId} className={w.status}>
-                  <td>{WALL_NAMES[w.wallId] ?? w.wallId}</td>
+                  <td>{house.walls.find((ww) => ww.id === w.wallId)?.label ?? w.wallId}</td>
                   <td>{w.hasOpenings ? 'z oknami' : 'bez okien'}</td>
                   <td className="num">{f(Math.max(0, w.distance), 2)} m</td>
                   <td className="num">≥ {w.required} m</td>
@@ -202,7 +203,7 @@ export function PlacementPanel() {
 
       <Section title="Narożniki domu i tarasu → najbliższa granica">
         <CornerTable />
-        <p className="hint">Odległość od każdego narożnika domu (A–H), narożnika tarasu (T) i narysowanych patio (P…) do najbliższej krawędzi działki (dla D i E do dwóch najbliższych) (numery 1–{site.parcel.length} przy krawędziach). Pomiary przechodzące przez dom są pomijane. Czerwone &lt; 3 m, pomarańczowe &lt; 4 m.</p>
+        <p className="hint">Odległość od każdego narożnika domu (A–{cornerLabel(house.outline.length - 1)}), narożnika tarasu (T) i narysowanych patio (P…) do najbliższej krawędzi działki{house.twoEdgeCorners.length > 0 && <> (dla {house.twoEdgeCorners.map(cornerLabel).join(' i ')} do dwóch najbliższych)</>} (numery 1–{site.parcel.length} przy krawędziach). Pomiary przechodzące przez dom są pomijane. Czerwone &lt; 3 m, pomarańczowe &lt; 4 m.</p>
       </Section>
 
       <Section title="Poziom posadzki i roboty ziemne">
@@ -220,7 +221,7 @@ export function PlacementPanel() {
           <div><b>{f(ew.fill, 0)} m³</b><span>nasyp</span></div>
           <div><b>{f((d.floorH - ew.terrainMin), 2)} m</b><span>posadzka nad najniższym pkt</span></div>
         </div>
-        <p className="hint">Teren {f(ew.terrainMin)}–{f(ew.terrainMax)} m n.p.m. (GUGiK NMT 1 m). Poziom auto ±0,00 = {f(autoFloorLevel(site, pl))}. Platforma na ±0,00 − {f(house.plinth)} m, skarpy 1:2. Roboty ziemne liczone tylko dla platformy (bez wykopów pod fundamenty).</p>
+        <p className="hint">Teren {f(ew.terrainMin)}–{f(ew.terrainMax)} m n.p.m. (GUGiK NMT 1 m). Poziom auto ±0,00 = {f(autoFloorLevel(site, house, pl))}. Platforma na ±0,00 − {f(house.plinth)} m, skarpy 1:2. Roboty ziemne liczone tylko dla platformy (bez wykopów pod fundamenty).</p>
         <Profile />
       </Section>
 
@@ -294,6 +295,7 @@ function nearestRoadBearing(parcel: [number, number][], pl: { x: number; z: numb
 function Profile() {
   const site = useSite();
   const d = useDeferredValue(useDerived());
+  const house = d.house;
   const pl = useDeferredValue(useStore((s) => s.placement));
   const W = 320, H = 130;
   const half = 26;
@@ -306,8 +308,8 @@ function Profile() {
     const t1 = carvedHeight(site, p[0], p[1], d.platform);
     const Y = s + house.depth / 2;
     let roof: number | null = null;
-    for (let X = -0.5; X <= house.width + 0.5; X += 0.25) {
-      const r = roofTopAt(X, Y);
+    for (let X = -1.5; X <= house.width + 1.5; X += 0.25) {
+      const r = roofTopAt(house, X, Y);
       if (r !== null) roof = Math.max(roof ?? -Infinity, r);
     }
     pts.push({ s, t0, t1, roof: roof === null ? null : d.floorH + roof });

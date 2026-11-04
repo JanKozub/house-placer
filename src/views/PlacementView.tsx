@@ -6,7 +6,7 @@ import { LabelContext, LabelOverlay, LabelProjector, LabelRegistry, WorldLabel }
 import { create } from 'zustand';
 import { useDerived, useSite } from '../derived';
 import { uid, useStore, type GardenKind, type Tool, type TreeKind } from '../store';
-import { house } from '../house/ambrozja17';
+import { houseById, useHouse } from '../house/projects';
 import { toLocal } from '../house/geometry';
 import { centroid, closestOnSegment, pointInPolygon, toSite, type P2 } from '../placement/geom2d';
 import { f } from '../ui/format';
@@ -60,7 +60,8 @@ function HousePlanOverlay() {
   const pl = useStore((s) => s.placement);
   const showPlan = useStore((s) => s.layers.plan);
   const d = useDerived();
-  const toS = (X: number, Y: number) => toSite(toLocal(X, Y), pl);
+  const house = useHouse();
+  const toS = (X: number, Y: number) => toSite(toLocal(house, X, Y), pl);
   const fp = d.footprint;
   const fillGeom = useMemo(() => {
     const s = new THREE.Shape(fp.map(([x, z]) => new THREE.Vector2(x, z)));
@@ -273,8 +274,9 @@ function GardenOverlay({ draft, cursor }: { draft: P2[]; cursor: P2 | null }) {
 function RotateHandle() {
   const pl = useStore((s) => s.placement);
   const tool = useStore((s) => s.tool);
+  const house = useHouse();
   if (tool !== 'select') return null;
-  const h = toSite(toLocal(house.width / 2, house.depth + 3.2), pl);
+  const h = toSite(toLocal(house, house.width / 2, house.depth + 3.2), pl);
   return (
     <Overlay order={40}>
       <mesh position={[h[0], OVER + 4, h[1]]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={41}>
@@ -340,7 +342,8 @@ function Interaction({ draft, setDraft, setCursor }: { draft: P2[]; setDraft: (d
     if (s.tool !== 'select') return;
     const p = pt(e);
     const pl = s.placement;
-    const handle = toSite(toLocal(house.width / 2, house.depth + 3.2), pl);
+    const house = houseById(s.projectId);
+    const handle = toSite(toLocal(house, house.width / 2, house.depth + 3.2), pl);
     if (Math.hypot(p[0] - handle[0], p[1] - handle[1]) < 1.0) {
       drag.current = { kind: 'rotate', start: Math.atan2(p[0] - pl.x, -(p[1] - pl.z)), bearing0: pl.bearing };
     } else if (pointInPolygon(p, d.platform.polygon)) {

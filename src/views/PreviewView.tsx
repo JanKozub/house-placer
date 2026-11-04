@@ -10,7 +10,8 @@ import { PhotoRenderer, type PhotoProgress } from './PhotoMode';
 import { carvedHeight } from '../site/Terrain';
 import { valleyBearing } from '../site/Landscape';
 import { openingSpan, toLocal } from '../house/geometry';
-import { house } from '../house/ambrozja17';
+import { useHouse } from '../house/projects';
+import type { HouseDef } from '../house/types';
 import { footprintSite } from '../placement/setbacks';
 import { toSite, closestOnSegment, pointInPolygon, type P2, type Placement } from '../placement/geom2d';
 import { compassPl, localToLatLon, trueBearing } from '../geo/proj';
@@ -18,15 +19,9 @@ import { f } from '../ui/format';
 
 export type ViewPreset = 'street' | 'entrance' | 'garden' | 'aerial' | 'side' | 'valley' | 'terrace' | 'living' | 'kitchen' | 'bedroom';
 
-/** views from inside/at the house: eye point (plan X,Y), eye height above ±0.00, look direction in plan or 'valley' */
-const HOUSE_VIEWS: Record<'valley' | 'terrace' | 'living' | 'kitchen' | 'bedroom', { at: P2 | 'valleyWindow'; h: number; look: P2 | 'valley'; label: string }> = {
-  valley: { at: 'valleyWindow', h: 1.6, look: 'valley', label: 'Na dolinę' },
-  terrace: { at: [4.6, 2.6], h: 1.6, look: [-0.7, -0.7], label: 'Z tarasu' },
-  living: { at: [1.3, 10.25], h: 1.6, look: [-1, 0], label: 'Z salonu' },
-  kitchen: { at: [5.44, 14.5], h: 1.6, look: [0, 1], label: 'Z kuchni' },
-  bedroom: { at: [15.3, 7.15], h: 1.6, look: [1, 0], label: 'Z pokoju' },
-};
-const isHouseView = (p: ViewPreset): p is keyof typeof HOUSE_VIEWS => p in HOUSE_VIEWS;
+type HouseViewKey = keyof HouseDef['views'];
+const HOUSE_VIEW_KEYS: HouseViewKey[] = ['valley', 'terrace', 'living', 'kitchen', 'bedroom'];
+const isHouseView = (p: ViewPreset): p is HouseViewKey => (HOUSE_VIEW_KEYS as string[]).includes(p);
 
 function CameraRig({ preset, nonce, valley }: { preset: ViewPreset; nonce: number; valley: number | null }) {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
@@ -34,17 +29,18 @@ function CameraRig({ preset, nonce, valley }: { preset: ViewPreset; nonce: numbe
   const site = useSite();
   const d = useDerived();
   const pl = useStore((s) => s.placement);
+  const house = useHouse();
   useEffect(() => {
     if (!controls) return;
     if (isHouseView(preset)) {
-      const v = HOUSE_VIEWS[preset];
-      const eye = v.at === 'valleyWindow' ? valleyWindow(pl, valley ?? pl.bearing).eye : toSite(toLocal(...v.at), pl);
+      const v = house.views[preset];
+      const eye = v.at === 'valleyWindow' ? valleyWindow(house, pl, valley ?? pl.bearing).eye : toSite(toLocal(house, ...v.at), pl);
       let dir: P2;
       if (v.look === 'valley') {
-        dir = valleyWindow(pl, valley ?? pl.bearing).look;
+        dir = valleyWindow(house, pl, valley ?? pl.bearing).look;
       } else {
         const at = v.at as P2;
-        const p2 = toSite(toLocal(at[0] + v.look[0], at[1] + v.look[1]), pl);
+        const p2 = toSite(toLocal(house, at[0] + v.look[0], at[1] + v.look[1]), pl);
         dir = [p2[0] - eye[0], p2[1] - eye[1]];
       }
       const y = d.floorY + v.h;
@@ -73,7 +69,7 @@ function CameraRig({ preset, nonce, valley }: { preset: ViewPreset; nonce: numbe
     camera.position.set(eye.x, ground(eye) + h, eye.y);
     controls.target.set(c.x, tgtH, c.y);
     controls.update();
-  }, [preset, nonce, controls]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [preset, nonce, controls, house]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
 }
 
@@ -81,15 +77,15 @@ function CameraRig({ preset, nonce, valley }: { preset: ViewPreset; nonce: numbe
  * The window / glazed door whose wall faces the valley most directly; the eye is placed 0.8 m
  * inside it, so the view is what you'd see standing at that window.
  */
-function valleyWindow(pl: Placement, valleyDeg: number) {
-  const fp = footprintSite(pl);
+function valleyWindow(house: HouseDef, pl: Placement, valleyDeg: number) {
+  const fp = footprintSite(house, pl);
   const vr = (valleyDeg * Math.PI) / 180;
   const vdir: P2 = [Math.sin(vr), -Math.cos(vr)];
   let best = { score: -Infinity, eye: [pl.x, pl.z] as P2, ref: '', look: vdir };
   for (const o of house.openings) {
     if (o.kind === 'garage' || o.kind === 'door' || o.kind === 'entrance') continue;
     const w = house.walls.find((ww) => ww.id === o.wall)!;
-    const a = toSite(toLocal(...w.a), pl), b = toSite(toLocal(...w.b), pl);
+    const a = toSite(toLocal(house, ...w.a), pl), b = toSite(toLocal(house, ...w.b), pl);
     const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
     let n: P2 = [-(b[1] - a[1]) / L, (b[0] - a[0]) / L];
     const mid: P2 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
@@ -177,6 +173,7 @@ export function PreviewOverlay() {
   const { preset, photo, progress, go, setPhoto, setProgress } = usePreviewUi();
   const pl = useStore((s) => s.placement);
   const valley = useValley();
+  const house = useHouse();
   const inside = isHouseView(preset);
 
   // Google Street View from the nearest public road, facing the valley (a plain link — no API key)
@@ -205,8 +202,8 @@ export function PreviewOverlay() {
         ))}
         <span className="sep" />
         <span className="toolbar-label">Widok z domu:</span>
-        {(Object.keys(HOUSE_VIEWS) as (keyof typeof HOUSE_VIEWS)[]).map((p) => (
-          <button key={p} className={preset === p ? 'on' : ''} onClick={() => go(p)}>{HOUSE_VIEWS[p].label}</button>
+        {HOUSE_VIEW_KEYS.map((p) => (
+          <button key={p} className={preset === p ? 'on' : ''} onClick={() => go(p)}>{house.views[p].label}</button>
         ))}
         <span className="sep" />
         {!photo ? (
@@ -221,7 +218,7 @@ export function PreviewOverlay() {
       <div className="view-hud">
         Kierunek widoku: <span ref={(el) => { headingRef.current = el; }}>—</span>
         {valley !== null && <> · dolina: {f(trueBearing(site, pl.x, pl.z, valley), 0)}° ({compassPl(trueBearing(site, pl.x, pl.z, valley))})</>}
-        {preset === 'valley' && valley !== null && <> · okno: {valleyWindow(pl, valley).ref}</>}
+        {preset === 'valley' && valley !== null && <> · okno: {valleyWindow(house, pl, valley).ref}</>}
         {inside && <> · przeciągnij, aby się rozejrzeć</>}
         {streetView && (
           <>
@@ -236,7 +233,7 @@ export function PreviewOverlay() {
           {progress?.done ? (
             <>
               <span>Gotowe · próbek: {progress.samples}</span>
-              <a className="btn primary" href={progress.url} download={`ambrozja17-dz664-2-${Date.now()}.png`}>Pobierz PNG</a>
+              <a className="btn primary" href={progress.url} download={`${house.id}-dz${site.meta.parcelNumber.replace('/', '-')}-${Date.now()}.png`}>Pobierz PNG</a>
             </>
           ) : (
             <span>Renderowanie… {progress?.samples ?? 0} / {photo.target} próbek (nie ruszaj kamerą)</span>

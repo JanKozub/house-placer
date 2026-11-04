@@ -4,25 +4,15 @@ import * as THREE from 'three';
 import { useStore } from '../store';
 import { buildHouse, toLocal, type PartName } from './geometry';
 import { createMaterials } from './materials';
-import { house } from './ambrozja17';
+import { useHouse } from './projects';
 import { rotationY, type Placement } from '../placement/geom2d';
-
-// a few broad lights (each point light costs every fragment of every lit material)
-const LIGHTS: [number, number][] = [
-  [3.2, 9.3], [9.6, 12.0], [14.5, 7.2],
-];
-const WALL_LAMPS: [number, number, number][] = [
-  // X, Y, rotation (plan) — just outside the façade
-  [9.25 + 0.9, house.walls[6].a[1] + 0.03, 0],
-  [house.porch.x1 - 0.03, 20.2, 0],
-  [2.9, house.walls[0].a[1] - 0.03, 0],
-  [house.walls[1].a[0] - 0.03, 1.4, 0],
-];
 
 export function HouseModel({ placement, floorY, night }: { placement: Placement; floorY: number; night: number }) {
   const palette = useStore((s) => s.palette);
   const interiorLights = useStore((s) => s.layers.interiorLights);
-  const parts = useMemo(() => buildHouse(), []);
+  const house = useHouse();
+  const parts = useMemo(() => buildHouse(house), [house]);
+  useEffect(() => () => Object.values(parts).forEach((g) => g?.dispose()), [parts]);
   const mats = useMemo(() => createMaterials(palette), []); // eslint-disable-line react-hooks/exhaustive-deps
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
@@ -47,8 +37,8 @@ export function HouseModel({ placement, floorY, night }: { placement: Placement;
           name={`house-${k}`}
         />
       ))}
-      {WALL_LAMPS.map(([X, Y], i) => {
-        const [x, z] = toLocal(X, Y);
+      {house.wallLamps.map(([X, Y], i) => {
+        const [x, z] = toLocal(house, X, Y);
         return (
           <group key={i} position={[x, 2.25, z]}>
             <mesh material={lampMat}>
@@ -59,8 +49,8 @@ export function HouseModel({ placement, floorY, night }: { placement: Placement;
         );
       })}
       {lit &&
-        LIGHTS.map(([X, Y], i) => {
-          const [x, z] = toLocal(X, Y);
+        house.lights.map(([X, Y], i) => {
+          const [x, z] = toLocal(house, X, Y);
           return <pointLight key={i} position={[x, 2.4, z]} color="#ffd9a8" intensity={night * 25} distance={9} decay={2} />;
         })}
     </group>
