@@ -22,6 +22,6 @@ export function Attribution() {
         Drogi: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>
       </span>,
     );
-  parts.push(<span key="gugik">Działki i teren: GUGiK</span>);
+  parts.push(<span key="gugik">{site.buildings.length ? 'Działki, teren i budynki (BDOT10k): GUGiK' : 'Działki i teren: GUGiK'}</span>);
   return <div className="attribution">{parts.reduce<React.ReactNode[]>((acc, p, i) => (i ? [...acc, ' · ', p] : [p]), [])}</div>;
 }

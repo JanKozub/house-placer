@@ -10,7 +10,8 @@
     "test": "vitest run",
     "fetch-site": "tsx scripts/fetch-site.ts",
     "fetch-map": "tsx scripts/fetch-site.ts --map-only",
-    "fetch-landscape": "tsx scripts/fetch-site.ts --landscape-only"
+    "fetch-landscape": "tsx scripts/fetch-site.ts --landscape-only",
+    "fetch-buildings": "tsx scripts/fetch-site.ts --buildings-only"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",

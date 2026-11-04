@@ -18,6 +18,7 @@ export interface SiteMeta {
   imagery?: { file: string; source: string } | null;
   roads?: string | null;
   landscape?: Record<'wide' | 'far', LandscapeMeta>;
+  buildings?: { file: string; source: string; radius: number; count: number } | null;
 }
 
 export interface LandscapeMeta {
@@ -76,6 +77,9 @@ export interface Neighbor { id: string; parcel: string; ring: P2[] }
 /** road centreline from OpenStreetMap, in site-local coords */
 export interface Road { id: number; highway: string; name: string | null; surface: string; width: number; pts: P2[] }
 
+/** neighbouring building from BDOT10k: kind (h house, o outbuilding, c commercial/public, r church), storeys */
+export interface Building { kind: 'h' | 'o' | 'c' | 'r'; levels: number; underConstruction: boolean; ring: P2[] }
+
 export interface Site {
   meta: SiteMeta;
   parcel: P2[];
@@ -91,6 +95,8 @@ export interface Site {
   roads: Road[];
   /** wider landscape for long views (8 km, 30 km), when downloaded */
   land: LandRing[];
+  /** existing buildings around the parcel (rough 3D context) */
+  buildings: Building[];
 }
 
 export function makeSite(
@@ -101,6 +107,7 @@ export function makeSite(
   hasOrtho: boolean,
   roads: Road[] = [],
   land: LandRing[] = [],
+  buildings: Building[] = [],
 ): Site {
   const { E, N } = meta.origin;
   const toLocal = ([e, n]: [number, number]): P2 => [e - E, -(n - N)];
@@ -123,17 +130,26 @@ export function makeSite(
     imagerySource: hasOrtho ? meta.imagery?.source ?? 'GUGiK' : null,
     roads,
     land,
+    buildings,
   };
 }
 
 export async function loadSite(): Promise<Site> {
   const meta: SiteMeta = await fetch(`${SITE}/site.json`).then((r) => r.json());
-  const [parcel, neighbors, demBuf, roads] = await Promise.all([
+  const [parcel, neighbors, demBuf, roads, rawBuildings] = await Promise.all([
     fetch(`${SITE}/parcel.json`).then((r) => r.json()),
     fetch(`${SITE}/neighbors.json`).then((r) => r.json()),
     fetch(`${SITE}/dem.bin`).then((r) => r.arrayBuffer()),
     meta.roads ? fetch(`${SITE}/${meta.roads}`).then((r) => r.json()).catch(() => []) : Promise.resolve([]),
+    meta.buildings
+      ? (fetch(`${SITE}/${meta.buildings.file}`).then((r) => r.json()).catch(() => []) as Promise<{ k: Building['kind']; l: number; u?: 1; p: number[] }[]>)
+      : Promise.resolve([]),
   ]);
+  const buildings: Building[] = rawBuildings.map((b) => {
+    const ring: P2[] = [];
+    for (let i = 0; i + 1 < b.p.length; i += 2) ring.push([b.p[i], b.p[i + 1]]);
+    return { kind: b.k, levels: b.l, underConstruction: !!b.u, ring };
+  });
   const land: LandRing[] = [];
   for (const key of ['wide', 'far'] as const) {
     const lm = meta.landscape?.[key];
@@ -154,5 +170,5 @@ export async function loadSite(): Promise<Site> {
       /* landscape is optional */
     }
   }
-  return makeSite(meta, parcel.ring, neighbors, demBuf, !!meta.imagery, roads, land);
+  return makeSite(meta, parcel.ring, neighbors, demBuf, !!meta.imagery, roads, land, buildings);
 }

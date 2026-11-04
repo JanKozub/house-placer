@@ -15,8 +15,19 @@ const curvatureDrop = (d2: number) => (d2 / (2 * EARTH_R)) * (1 - REFRACTION_K);
 
 interface Rect { x0: number; z0: number; x1: number; z1: number }
 
-/** decimated heights for a ring (max over each step×step block so ridges keep their height) */
-function decimate(ring: LandRing, step: number) {
+type Decimated = { h: Float32Array; n: number; res: number };
+const decimated = new WeakMap<LandRing, Map<number, Decimated>>();
+
+/** decimated heights for a ring (max over each step×step block so ridges keep their height); cached */
+function decimate(ring: LandRing, step: number): Decimated {
+  let byStep = decimated.get(ring);
+  if (!byStep) decimated.set(ring, (byStep = new Map()));
+  let d = byStep.get(step);
+  if (!d) byStep.set(step, (d = decimateRaw(ring, step)));
+  return d;
+}
+
+function decimateRaw(ring: LandRing, step: number): Decimated {
   const N = ring.meta.px, n = Math.floor(N / step);
   const h = new Float32Array(n * n);
   for (let j = 0; j < n; j++)
@@ -124,6 +135,28 @@ function useRingTexture(ring: LandRing) {
   return tex;
 }
 
+/** steps used to render each ring (wide, far) — shared with surfaceY so objects sit on the drawn surface */
+const RING_STEP = { wide: 2, far: 3 } as const;
+
+/**
+ * Scene y of the ground as drawn at site-local x,z: the detailed DEM where it exists, otherwise the
+ * decimated landscape mesh (bilinear between its vertices, with earth curvature).
+ */
+export function surfaceY(site: Site, x: number, z: number): number {
+  const d = site.dem;
+  if (x > d.x0 && x < d.x0 + d.sizeX && z > d.z0 && z < d.z0 + d.sizeZ) return d.heightAt(x, z) - site.baseH;
+  for (const ring of [...site.land].sort((a, b) => a.meta.size - b.meta.size)) {
+    const g = decimate(ring, ring.meta.size < 20000 ? RING_STEP.wide : RING_STEP.far);
+    const fx = (x - ring.x0) / g.res - 0.5, fz = (z - ring.z0) / g.res - 0.5;
+    if (fx < 0 || fz < 0 || fx >= g.n - 1 || fz >= g.n - 1) continue;
+    const i = Math.floor(fx), j = Math.floor(fz), tx = fx - i, tz = fz - j;
+    const h = g.h, n = g.n;
+    const H = (h[j * n + i] * (1 - tx) + h[j * n + i + 1] * tx) * (1 - tz) + (h[(j + 1) * n + i] * (1 - tx) + h[(j + 1) * n + i + 1] * tx) * tz;
+    return H - site.baseH - curvatureDrop(x * x + z * z);
+  }
+  return d.heightAt(x, z) - site.baseH;
+}
+
 function Ring({ ring, baseH, inner, name, step, tiles }: { ring: LandRing; baseH: number; inner: Rect | null; name: string; step: number; tiles: number }) {
   const geoms = useMemo(() => ringTiles(ring, baseH, inner, step, tiles), [ring, baseH, inner, step, tiles]);
   const tex = useRingTexture(ring);
@@ -157,8 +190,8 @@ export function Landscape({ site }: { site: Site }) {
   const wideMemo = useMemo(() => wideRect, [wide]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <group name="landscape">
-      {wide && <Ring ring={wide} baseH={site.baseH} inner={nearMemo} name="landscape-wide" step={2} tiles={6} />}
-      {far && <Ring ring={far} baseH={site.baseH} inner={wideMemo ?? nearMemo} name="landscape-far" step={3} tiles={4} />}
+      {wide && <Ring ring={wide} baseH={site.baseH} inner={nearMemo} name="landscape-wide" step={RING_STEP.wide} tiles={6} />}
+      {far && <Ring ring={far} baseH={site.baseH} inner={wideMemo ?? nearMemo} name="landscape-far" step={RING_STEP.far} tiles={4} />}
     </group>
   );
 }

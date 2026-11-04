@@ -1,7 +1,7 @@
 /**
  * One-off site data fetch from GUGiK public services.
  *   npm run fetch-site
- * Writes public/site/{site.json, parcel.json, neighbors.json, dem.bin, ortho.jpg}
+ * Writes public/site/{site.json, parcel.json, neighbors.json, dem.bin, ortho.jpg, roads.json, land-*, buildings.json}
  *
  * Coordinates: EPSG:2180 (PUWG 1992). WKT from ULDK is "E N" order.
  */
@@ -322,7 +322,95 @@ async function fetchLandscape() {
   await writeFile(new URL('site.json', OUT), JSON.stringify(meta, null, 2));
 }
 
+const BUILDING_RADIUS = 2500; // m around the parcel
+const CACHE = new URL('../.cache/bdot/', import.meta.url);
+
+/** building kind from BDOT10k's detailed function */
+function buildingKind(fn: string, general: string): 'h' | 'o' | 'c' | 'r' {
+  if (/kości|kaplic|cerkiew|świątyni/i.test(fn)) return 'r';
+  if (/gospodarcz|garaż|wiata|inwentarsk|stodo|szklarni/i.test(fn)) return 'o';
+  if (/mieszkaln|jednorodzin|wielorodzin|letnisk/i.test(fn + ' ' + general)) return 'h';
+  return 'c';
+}
+
+/**
+ * Neighbouring buildings from GUGiK BDOT10k (EGiB outlines, storey count, function): the powiat
+ * GML package(s) are downloaded once into .cache/bdot and cut to BUILDING_RADIUS around the parcel.
+ * Output public/site/buildings.json: [{ k: kind, l: storeys, u?: under construction, p: [x,z,…] }].
+ */
+async function fetchBuildings() {
+  const { readFile, readdir } = await import('node:fs/promises');
+  const { execFileSync } = await import('node:child_process');
+  const meta = JSON.parse(await readFile(new URL('site.json', OUT), 'utf8'));
+  const { E: E0, N: N0 } = meta.origin;
+  const R = BUILDING_RADIUS;
+  // powiats covering the area (this WFS uses N,E axis order for EPSG:2180)
+  const wfs =
+    'https://mapy.geoportal.gov.pl/wss/service/PZGIK/BDOT/WFS/PobieranieBDOT10k?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature' +
+    `&TYPENAMES=ms:BDOT10k_powiaty&BBOX=${N0 - R},${E0 - R},${N0 + R},${E0 + R},urn:ogc:def:crs:EPSG::2180`;
+  await mkdir(CACHE, { recursive: true });
+  let urls: string[] = [];
+  for (let attempt = 0; attempt < 3 && !urls.length; attempt++) {
+    try {
+      const caps = await (await fetch(wfs, { headers: { 'User-Agent': UA } })).text();
+      urls = [...caps.matchAll(/<ms:URL_GML>([^<]+)<\/ms:URL_GML>/g)].map((m) => m[1]);
+    } catch (err) {
+      console.log('BDOT10k index', String(err));
+    }
+  }
+  // offline: reuse packages downloaded earlier
+  if (!urls.length) urls = (await readdir(CACHE)).filter((f) => f.endsWith('_GML.zip')).map((f) => `cache/${f}`);
+  if (!urls.length) throw new Error('no BDOT10k package found for the area');
+  const out: { k: string; l: number; u?: 1; p: number[] }[] = [];
+  const seen = new Set<string>();
+  for (const url of urls) {
+    const zip = new URL(url.split('/').pop()!, CACHE);
+    if (!existsSync(zip)) {
+      console.log('downloading', url);
+      const r = await fetch(url, { headers: { 'User-Agent': UA } });
+      if (!r.ok) throw new Error(`BDOT10k ${r.status}`);
+      await writeFile(zip, Buffer.from(await r.arrayBuffer()));
+    }
+    const dir = new URL(zip.href.replace(/\.zip$/, '/'));
+    execFileSync('unzip', ['-o', '-q', zip.pathname, '*OT_BUBD_A.xml', '-d', dir.pathname]);
+    const files = (await readdir(dir, { recursive: true })).filter((f) => String(f).endsWith('OT_BUBD_A.xml'));
+    for (const f of files) {
+      const xml = await readFile(new URL(String(f), dir), 'utf8');
+      for (const m of xml.matchAll(/<ot:OT_BUBD_A [\s\S]*?<\/ot:OT_BUBD_A>/g)) {
+        const rec = m[0];
+        const pos = /<gml:exterior>[\s\S]*?<gml:posList>([^<]+)<\/gml:posList>/.exec(rec);
+        if (!pos) continue;
+        const v = pos[1].trim().split(/\s+/).map(Number);
+        if (Math.hypot(v[0] - E0, v[1] - N0) > R) continue;
+        const id = /<ot:lokalnyId>([^<]+)/.exec(rec)?.[1] ?? '';
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const status = /<ot:kategoriaIstnienia>([^<]+)/.exec(rec)?.[1] ?? '';
+        if (/projektowany|zniszczony/.test(status)) continue;
+        const fn = /<ot:funkcjaSzczegolowaBudynku>([^<]+)/.exec(rec)?.[1] ?? '';
+        const general = /<ot:funkcjaOgolnaBudynku>([^<]+)/.exec(rec)?.[1] ?? '';
+        const levels = Number(/<ot:liczbaKondygnacji>(\d+)/.exec(rec)?.[1]) || 1;
+        const p: number[] = [];
+        for (let i = 0; i + 1 < v.length; i += 2) p.push(Math.round((v[i] - E0) * 10) / 10, Math.round(-(v[i + 1] - N0) * 10) / 10);
+        if (p[0] === p.at(-2) && p[1] === p.at(-1)) p.splice(-2, 2); // closing vertex
+        if (p.length < 6) continue;
+        out.push({ k: buildingKind(fn, general), l: levels, ...(status === 'w budowie' ? { u: 1 as const } : {}), p });
+      }
+    }
+  }
+  await writeFile(new URL('buildings.json', OUT), JSON.stringify(out));
+  meta.buildings = { file: 'buildings.json', source: 'GUGiK BDOT10k', radius: R, count: out.length };
+  await writeFile(new URL('site.json', OUT), JSON.stringify(meta, null, 2));
+  const kinds: Record<string, number> = {};
+  for (const b of out) kinds[b.k] = (kinds[b.k] ?? 0) + 1;
+  console.log('buildings', out.length, kinds);
+}
+
 async function main() {
+  if (process.argv.includes('--buildings-only')) {
+    await fetchBuildings();
+    return;
+  }
   if (process.argv.includes('--map-only') || process.argv.includes('--ortho-only')) {
     await fetchMap();
     return;
@@ -402,6 +490,7 @@ async function main() {
   // 4. Imagery + roads, then the wider landscape
   await fetchMap();
   await fetchLandscape();
+  await fetchBuildings();
 }
 
 function pointInRing(x: number, y: number, ring: Ring) {

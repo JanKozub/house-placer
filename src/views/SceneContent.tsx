@@ -8,6 +8,7 @@ import { Terrain } from '../site/Terrain';
 import { Fence, Trees } from '../site/Garden';
 import { fillSkyTexture, horizonColor, makeSkyTexture } from '../site/sun';
 import { Landscape } from '../site/Landscape';
+import { Buildings } from '../site/Buildings';
 import { bumpMotion } from './motion';
 
 function SkyAndSun({ dir, night, target, shadows }: { dir: THREE.Vector3; night: number; target: THREE.Vector3; shadows: boolean }) {
@@ -90,6 +91,7 @@ export function SceneContent({ shadows = true, fixedSun }: { shadows?: boolean; 
   const site = useSite();
   const d = useDerived();
   const placement = useStore((s) => s.placement);
+  const showBuildings = useStore((s) => s.layers.buildings !== false);
   const target = useMemo(() => new THREE.Vector3(placement.x, d.floorY, placement.z), [placement.x, placement.z, d.floorY]);
   const dir = fixedSun ?? d.sun.dir;
   const night = fixedSun ? 0 : d.sun.night;
@@ -99,6 +101,7 @@ export function SceneContent({ shadows = true, fixedSun }: { shadows?: boolean; 
       <SkyAndSun dir={dir} night={night} target={target} shadows={shadows} />
       <Terrain site={site} platform={d.platform} apron={d.apron} />
       <Landscape site={site} />
+      <Buildings site={site} visible={showBuildings} />
       <ApronMesh apron={d.apron} footprint={d.footprint} y={d.platformH - site.baseH + 0.015} />
       <HouseModel placement={placement} floorY={d.floorY} night={night} />
       <Trees site={site} platform={d.platform} />

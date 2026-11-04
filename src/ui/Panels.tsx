@@ -98,6 +98,7 @@ export function PreviewPanel() {
         <Toggle label="Trawnik na działce (zamiast obecnego pola)" value={layers.parcelLawn} onChange={(v) => setLayers({ parcelLawn: v })} />
         <Toggle label="Zdjęcie satelitarne jako teren" value={layers.ortho} onChange={(v) => setLayers({ ortho: v })} />
         <Toggle label="Drogi (OpenStreetMap)" value={layers.roads !== false} onChange={(v) => setLayers({ roads: v })} />
+        <Toggle label="Okoliczne budynki (BDOT10k)" value={layers.buildings !== false} onChange={(v) => setLayers({ buildings: v })} />
         <Toggle label="Cieniowanie otoczenia (AO)" value={layers.ao} onChange={(v) => setLayers({ ao: v })} />
         <Toggle label="Światła włączone nocą" value={layers.interiorLights} onChange={(v) => setLayers({ interiorLights: v })} />
         {!site.orthoUrl && <p className="hint warn">Brak zdjęcia satelitarnego. Uruchom <code>npm run fetch-map</code>.</p>}
@@ -259,6 +260,7 @@ export function PlacementPanel() {
         </div>
         <Toggle label="Sąsiednie działki" value={layers.neighbors} onChange={(v) => setLayers({ neighbors: v })} />
         <Toggle label="Drogi (OpenStreetMap)" value={layers.roads !== false} onChange={(v) => setLayers({ roads: v })} />
+        <Toggle label="Okoliczne budynki (BDOT10k)" value={layers.buildings !== false} onChange={(v) => setLayers({ buildings: v })} />
         <div className="chips">
           <button onClick={exportJson}>Eksportuj JSON</button>
           <button onClick={() => fileRef.current?.click()}>Importuj JSON</button>
