@@ -1,0 +1,31 @@
+{
+  "parcelId": "120906_2.0004.664/2",
+  "parcelNumber": "664/2",
+  "region": "Zakliczyn",
+  "commune": "Siepraw",
+  "origin": {
+    "E": 571771,
+    "N": 224544,
+    "lat": 49.88391251040363,
+    "lon": 19.999355016891187
+  },
+  "bbox": {
+    "minE": 571611,
+    "minN": 224384,
+    "maxE": 571931,
+    "maxN": 224704
+  },
+  "dem": {
+    "width": 320,
+    "height": 320,
+    "res": 1,
+    "min": 333.1199951171875,
+    "max": 360.9700012207031,
+    "datum": "PL-KRON86-NH"
+  },
+  "ortho": {
+    "width": 2048,
+    "height": 2048
+  },
+  "fetched": "2026-11-04T16:21:02.020Z"
+}

@@ -1,0 +1,420 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import * as THREE from 'three';
+import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
+import { Html, Line, MapControls, OrthographicCamera } from '@react-three/drei';
+import { SceneContent } from './SceneContent';
+import { SiteContext, useDerived, useSite } from '../derived';
+import { uid, useStore, type GardenKind, type Tool, type TreeKind } from '../store';
+import { house } from '../house/ambrozja17';
+import { roofOutlineLocal, toLocal } from '../house/geometry';
+import { centroid, closestOnSegment, pointInPolygon, toSite, type P2 } from '../placement/geom2d';
+
+const OVER = 200; // overlay height (scene units) — drawn without depth test
+const FIXED_SUN = new THREE.Vector3(-0.35, 0.85, 0.4).normalize();
+
+const AREA_TOOLS: GardenKind[] = ['driveway', 'path', 'patio', 'flowerbed', 'gravel'];
+const TREE_TOOLS: TreeKind[] = ['deciduous', 'conifer', 'birch', 'shrub'];
+const TREE_H: Record<TreeKind, number> = { deciduous: 7, conifer: 5, birch: 9, shrub: 1.3 };
+
+const v3 = (p: P2, y = OVER): [number, number, number] => [p[0], y, p[1]];
+const ring = (pts: P2[], y = OVER) => [...pts, pts[0]].map((p) => v3(p, y));
+
+function Overlay({ children, order = 10 }: { children: React.ReactNode; order?: number }) {
+  return (
+    <group userData={{ rasterOnly: true }} renderOrder={order}>
+      {children}
+    </group>
+  );
+}
+
+function Label({ at, children, className = 'map-label' }: { at: P2; children: React.ReactNode; className?: string }) {
+  return (
+    <Html position={v3(at)} center zIndexRange={[20, 0]} style={{ pointerEvents: 'none' }}>
+      <div className={className}>{children}</div>
+    </Html>
+  );
+}
+
+function Lines({ points, color, width = 2, dashed = false, opacity = 1 }: { points: [number, number, number][]; color: string; width?: number; dashed?: boolean; opacity?: number }) {
+  return (
+    <Line
+      points={points}
+      color={color}
+      lineWidth={width}
+      dashed={dashed}
+      dashSize={0.6}
+      gapSize={0.4}
+      depthTest={false}
+      transparent
+      opacity={opacity}
+      renderOrder={20}
+    />
+  );
+}
+
+function HousePlanOverlay() {
+  const pl = useStore((s) => s.placement);
+  const showPlan = useStore((s) => s.layers.plan);
+  const d = useDerived();
+  const toS = (X: number, Y: number) => toSite(toLocal(X, Y), pl);
+  const fp = d.footprint;
+  const roof = roofOutlineLocal().map((p) => toSite(p, pl));
+  const fillGeom = useMemo(() => {
+    const s = new THREE.Shape(fp.map(([x, z]) => new THREE.Vector2(x, z)));
+    const g = new THREE.ShapeGeometry(s);
+    g.rotateX(Math.PI / 2);
+    g.translate(0, OVER - 0.1, 0);
+    return g;
+  }, [fp]);
+  const front = toS(house.width / 2, house.depth + 0.5);
+  return (
+    <Overlay>
+      {showPlan && (
+        <mesh geometry={fillGeom} renderOrder={15}>
+          <meshBasicMaterial color="#ffffff" transparent opacity={0.82} depthTest={false} side={THREE.DoubleSide} />
+        </mesh>
+      )}
+      <Lines points={ring(fp)} color="#1f2a37" width={3} />
+      <Lines points={ring(roof)} color="#1f2a37" width={1.2} dashed opacity={0.7} />
+      {showPlan && (
+        <>
+          {house.partitions.map(([x1, y1, x2, y2], i) => (
+            <Lines key={i} points={[v3(toS(x1, y1)), v3(toS(x2, y2))]} color="#4b5563" width={1.2} />
+          ))}
+          {house.openings.map((o, i) => {
+            const w = house.walls.find((ww) => ww.id === o.wall)!;
+            const horiz = Math.abs(w.a[1] - w.b[1]) < 1e-6;
+            const a: P2 = horiz ? [o.at - o.width / 2, w.a[1]] : [w.a[0], o.at - o.width / 2];
+            const b: P2 = horiz ? [o.at + o.width / 2, w.a[1]] : [w.a[0], o.at + o.width / 2];
+            return <Lines key={'o' + i} points={[v3(toS(...a)), v3(toS(...b))]} color={o.kind === 'garage' || o.kind === 'entrance' || o.kind === 'door' ? '#b45309' : '#0284c7'} width={5} />;
+          })}
+          {house.rooms.map((r, i) => (
+            <Label key={'r' + i} at={toS(...r.at)} className="room-label">
+              {r.name}
+              <br />
+              <small>{r.area.toFixed(2)} m²</small>
+            </Label>
+          ))}
+        </>
+      )}
+      <Label at={front} className="front-label">▼ entrance / garage</Label>
+    </Overlay>
+  );
+}
+
+function SetbackOverlay() {
+  const d = useDerived();
+  const show = useStore((s) => s.layers.dims);
+  if (!show) return null;
+  const col = { ok: '#16a34a', warn: '#d97706', fail: '#dc2626' };
+  // show the most critical dimension per boundary-facing wall (skip far ones)
+  const walls = d.setbacks.walls.filter((w) => w.distance < 15);
+  return (
+    <Overlay order={30}>
+      {walls.map((w) => (
+        <group key={w.wallId}>
+          <Lines points={[v3(w.from), v3(w.to)]} color={col[w.status]} width={2.5} />
+          <Label at={[(w.from[0] + w.to[0]) / 2, (w.from[1] + w.to[1]) / 2]} className={`dim-label ${w.status}`}>
+            {Math.max(0, w.distance).toFixed(2)} m
+          </Label>
+        </group>
+      ))}
+      {d.setbacks.buildingLine && (
+        <Lines points={[v3(d.setbacks.buildingLine.from), v3(d.setbacks.buildingLine.to)]} color={d.setbacks.buildingLine.ok ? '#7c3aed' : '#dc2626'} width={2} />
+      )}
+    </Overlay>
+  );
+}
+
+function SiteOverlay() {
+  const site = useSite();
+  const showNb = useStore((s) => s.layers.neighbors);
+  const fenceEdges = useStore((s) => s.fenceEdges);
+  const tool = useStore((s) => s.tool);
+  const P = site.parcel;
+  return (
+    <Overlay>
+      {showNb &&
+        site.neighbors.map((n) => (
+          <group key={n.id}>
+            <Lines points={ring(n.ring)} color="#ffffff" width={1} opacity={0.45} />
+            {n.ring.length > 2 && (
+              <Label at={centroid(n.ring)} className="nb-label">
+                {n.parcel}
+              </Label>
+            )}
+          </group>
+        ))}
+      <Lines points={ring(P)} color="#facc15" width={3.5} />
+      {P.map((p, i) => {
+        const q = P[(i + 1) % P.length];
+        const on = fenceEdges.includes(i);
+        const L = Math.hypot(q[0] - p[0], q[1] - p[1]);
+        return (
+          <group key={i}>
+            {(on || tool === 'fence') && <Lines points={[v3(p, OVER + 1), v3(q, OVER + 1)]} color={on ? '#374151' : '#9ca3af'} width={on ? 6 : 4} dashed={!on} />}
+            <Label at={[(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]} className="edge-label">{L.toFixed(2)} m</Label>
+          </group>
+        );
+      })}
+      <Label at={centroid(P)} className="parcel-label">dz. {site.meta.parcelNumber}</Label>
+    </Overlay>
+  );
+}
+
+function GardenOverlay({ draft, cursor }: { draft: P2[]; cursor: P2 | null }) {
+  const garden = useStore((s) => s.garden);
+  const trees = useStore((s) => s.trees);
+  const selected = useStore((s) => s.selected);
+  const bl = useStore((s) => s.buildingLine);
+  const tool = useStore((s) => s.tool);
+  const draftPts = cursor && draft.length ? [...draft, cursor] : draft;
+  return (
+    <Overlay order={25}>
+      {garden.map((g) => (
+        <Lines key={g.id} points={ring(g.points)} color={g.id === selected ? '#2563eb' : '#ffffff'} width={g.id === selected ? 3 : 1} opacity={g.id === selected ? 1 : 0.5} />
+      ))}
+      {trees.map((t) => (
+        <mesh key={t.id} position={[t.x, OVER, t.z]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={26} visible={t.id === selected}>
+          <ringGeometry args={[t.height * 0.3, t.height * 0.3 + 0.25, 32]} />
+          <meshBasicMaterial color="#2563eb" depthTest={false} transparent />
+        </mesh>
+      ))}
+      {bl && <Lines points={bl.map((p) => v3(p))} color="#7c3aed" width={2.5} dashed />}
+      {draftPts.length >= 2 && (
+        <Lines points={draftPts.map((p) => v3(p, OVER + 2))} color={tool === 'buildingLine' ? '#7c3aed' : '#2563eb'} width={2.5} dashed={tool === 'measure'} />
+      )}
+      {tool === 'measure' && draftPts.length === 2 && (
+        <Label at={[(draftPts[0][0] + draftPts[1][0]) / 2, (draftPts[0][1] + draftPts[1][1]) / 2]} className="dim-label ok">
+          {Math.hypot(draftPts[1][0] - draftPts[0][0], draftPts[1][1] - draftPts[0][1]).toFixed(2)} m
+        </Label>
+      )}
+      {draft.map((p, i) => (
+        <mesh key={i} position={[p[0], OVER + 3, p[1]]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={27}>
+          <circleGeometry args={[0.25, 16]} />
+          <meshBasicMaterial color={i === 0 ? '#f59e0b' : '#2563eb'} depthTest={false} transparent />
+        </mesh>
+      ))}
+    </Overlay>
+  );
+}
+
+function RotateHandle() {
+  const pl = useStore((s) => s.placement);
+  const tool = useStore((s) => s.tool);
+  if (tool !== 'select') return null;
+  const h = toSite(toLocal(house.width / 2, house.depth + 3.2), pl);
+  const c: P2 = [pl.x, pl.z];
+  return (
+    <Overlay order={40}>
+      <Lines points={[v3(c), v3(h)]} color="#2563eb" width={1.5} dashed />
+      <mesh position={[h[0], OVER + 4, h[1]]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={41}>
+        <circleGeometry args={[0.7, 24]} />
+        <meshBasicMaterial color="#2563eb" depthTest={false} transparent opacity={0.9} />
+      </mesh>
+      <Label at={h} className="handle-label">⟳</Label>
+    </Overlay>
+  );
+}
+
+type Drag = { kind: 'move'; dx: number; dz: number } | { kind: 'rotate'; start: number; bearing0: number } | null;
+
+function Interaction({ draft, setDraft, setCursor }: { draft: P2[]; setDraft: (d: P2[]) => void; setCursor: (p: P2 | null) => void }) {
+  const controls = useThree((s) => s.controls) as unknown as { enabled: boolean } | null;
+  const site = useSite();
+  const d = useDerived();
+  const st = useStore;
+  const drag = useRef<Drag>(null);
+  const lastClick = useRef(0);
+
+  const finishDraft = (pts: P2[]) => {
+    const { tool } = st.getState();
+    if (AREA_TOOLS.includes(tool as GardenKind) && pts.length >= 3) {
+      const id = uid();
+      st.getState().addGarden({ id, kind: tool as GardenKind, points: pts });
+      st.setState({ selected: id });
+    } else if (tool === 'buildingLine' && pts.length >= 2) {
+      st.setState({ buildingLine: pts });
+    }
+    setDraft([]);
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      const s = st.getState();
+      if (e.key === 'Escape') { setDraft([]); st.setState({ selected: null, tool: 'select' }); }
+      if (e.key === 'Enter') finishDraft(draft);
+      if (e.key === 'Backspace' && draft.length) { setDraft(draft.slice(0, -1)); e.preventDefault(); }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !draft.length && s.selected) s.removeSelected();
+      const step = e.shiftKey ? 1 : 0.1;
+      const b = (s.placement.bearing * Math.PI) / 180;
+      if (s.tool === 'select' && !s.selected) {
+        if (e.key === 'ArrowUp') s.setPlacement({ z: s.placement.z - step });
+        if (e.key === 'ArrowDown') s.setPlacement({ z: s.placement.z + step });
+        if (e.key === 'ArrowLeft') s.setPlacement({ x: s.placement.x - step });
+        if (e.key === 'ArrowRight') s.setPlacement({ x: s.placement.x + step });
+        if (e.key === 'q' || e.key === 'Q') s.setPlacement({ bearing: (s.placement.bearing - (e.shiftKey ? 15 : 1) + 360) % 360 });
+        if (e.key === 'e' || e.key === 'E') s.setPlacement({ bearing: (s.placement.bearing + (e.shiftKey ? 15 : 1)) % 360 });
+        void b;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }); // re-bind each render to see current draft
+
+  const pt = (e: ThreeEvent<PointerEvent | MouseEvent>): P2 => [e.point.x, e.point.z];
+
+  const onDown = (e: ThreeEvent<PointerEvent>) => {
+    if (e.button !== 0) return;
+    const s = st.getState();
+    if (s.tool !== 'select') return;
+    const p = pt(e);
+    const pl = s.placement;
+    const handle = toSite(toLocal(house.width / 2, house.depth + 3.2), pl);
+    if (Math.hypot(p[0] - handle[0], p[1] - handle[1]) < 1.0) {
+      drag.current = { kind: 'rotate', start: Math.atan2(p[0] - pl.x, -(p[1] - pl.z)), bearing0: pl.bearing };
+    } else if (pointInPolygon(p, d.platform.polygon)) {
+      drag.current = { kind: 'move', dx: pl.x - p[0], dz: pl.z - p[1] };
+      st.setState({ selected: null });
+    } else {
+      // select garden item
+      const tree = s.trees.find((t) => Math.hypot(t.x - p[0], t.z - p[1]) < Math.max(0.8, t.height * 0.3));
+      const area = [...s.garden].reverse().find((g) => pointInPolygon(p, g.points));
+      st.setState({ selected: tree?.id ?? area?.id ?? null });
+      return;
+    }
+    if (controls) controls.enabled = false;
+    (e.target as Element)?.setPointerCapture?.(e.pointerId);
+    e.stopPropagation();
+  };
+
+  const onMove = (e: ThreeEvent<PointerEvent>) => {
+    const p = pt(e);
+    setCursor(p);
+    const dr = drag.current;
+    if (!dr) return;
+    const s = st.getState();
+    if (dr.kind === 'move') {
+      s.setPlacement({ x: Math.round((p[0] + dr.dx) * 20) / 20, z: Math.round((p[1] + dr.dz) * 20) / 20 });
+    } else {
+      const a = Math.atan2(p[0] - s.placement.x, -(p[1] - s.placement.z));
+      let b = dr.bearing0 + ((a - dr.start) * 180) / Math.PI;
+      const snap = e.shiftKey ? 15 : 1;
+      b = ((Math.round(b / snap) * snap) % 360 + 360) % 360;
+      s.setPlacement({ bearing: b });
+    }
+  };
+
+  const onUp = () => {
+    if (drag.current && controls) controls.enabled = true;
+    drag.current = null;
+  };
+
+  const onClick = (e: ThreeEvent<MouseEvent>) => {
+    if (e.delta > 4) return;
+    const s = st.getState();
+    const p = pt(e);
+    const now = performance.now();
+    const dbl = now - lastClick.current < 300;
+    lastClick.current = now;
+    const t = s.tool;
+    if (AREA_TOOLS.includes(t as GardenKind) || t === 'buildingLine') {
+      if (dbl) { finishDraft(draft); return; }
+      if (draft.length >= 3 && Math.hypot(p[0] - draft[0][0], p[1] - draft[0][1]) < 0.6 && t !== 'buildingLine') { finishDraft(draft); return; }
+      setDraft([...draft, p]);
+    } else if (TREE_TOOLS.includes(t as TreeKind)) {
+      const id = uid();
+      s.addTree({ id, kind: t as TreeKind, x: p[0], z: p[1], height: TREE_H[t as TreeKind] * (0.85 + Math.random() * 0.3) });
+    } else if (t === 'fence') {
+      let best = -1, bd = 2.5;
+      site.parcel.forEach((a, i) => {
+        const b = site.parcel[(i + 1) % site.parcel.length];
+        const q = closestOnSegment(p, a, b);
+        const dd = Math.hypot(q[0] - p[0], q[1] - p[1]);
+        if (dd < bd) { bd = dd; best = i; }
+      });
+      if (best >= 0) s.toggleFenceEdge(best);
+    } else if (t === 'measure') {
+      setDraft(draft.length >= 2 ? [p] : [...draft, p]);
+    }
+  };
+
+  const size = Math.max(site.dem.sizeX, site.dem.sizeZ);
+  return (
+    <mesh
+      position={[site.dem.x0 + site.dem.sizeX / 2, OVER - 5, site.dem.z0 + site.dem.sizeZ / 2]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      onPointerDown={onDown}
+      onPointerMove={onMove}
+      onPointerUp={onUp}
+      onPointerLeave={() => setCursor(null)}
+      onClick={onClick}
+      userData={{ rasterOnly: true }}
+    >
+      <planeGeometry args={[size * 2, size * 2]} />
+      <meshBasicMaterial visible={false} />
+    </mesh>
+  );
+}
+
+function TopCamera() {
+  const site = useSite();
+  const c = centroid(site.parcel);
+  const cam = useRef<THREE.OrthographicCamera>(null!);
+  useEffect(() => {
+    cam.current.up.set(0, 0, -1);
+    cam.current.lookAt(c[0], 0, c[1]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return <OrthographicCamera ref={cam} makeDefault position={[c[0], 600, c[1]]} zoom={9} near={1} far={2000} up={[0, 0, -1]} />;
+}
+
+function ControlsTarget() {
+  const site = useSite();
+  const c = centroid(site.parcel);
+  return <MapControls makeDefault enableRotate={false} screenSpacePanning target={[c[0], 0, c[1]]} zoomSpeed={1.2} minZoom={2} maxZoom={80} />;
+}
+
+export function PlacementView() {
+  const site = useSite();
+  const tool = useStore((s) => s.tool);
+  const [draft, setDraft] = useState<P2[]>([]);
+  const [cursor, setCursor] = useState<P2 | null>(null);
+  useEffect(() => setDraft([]), [tool]);
+
+  return (
+    <div className={`viewport tool-${tool}`}>
+      <Canvas shadows dpr={[1, 2]} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}>
+        <SiteContext.Provider value={site}>
+          <TopCamera />
+          <ControlsTarget />
+          <SceneContent fixedSun={FIXED_SUN} />
+          <SiteOverlay />
+          <GardenOverlay draft={draft} cursor={cursor} />
+          <HousePlanOverlay />
+          <SetbackOverlay />
+          <RotateHandle />
+          <Interaction draft={draft} setDraft={setDraft} setCursor={setCursor} />
+        </SiteContext.Provider>
+      </Canvas>
+      <div className="compass" title="Grid north (PUWG 1992)">N ↑</div>
+      <ToolHint tool={tool} draftLen={draft.length} />
+    </div>
+  );
+}
+
+function ToolHint({ tool, draftLen }: { tool: Tool; draftLen: number }) {
+  const hints: Partial<Record<Tool, string>> = {
+    select: 'Drag the house to move · drag the blue handle to rotate (Shift = 15° steps) · arrows nudge, Q/E rotate · drag empty ground to pan, scroll to zoom',
+    fence: 'Click a plot boundary to add/remove a fence along it (gaps are left where driveways/paths cross)',
+    buildingLine: 'Click points of the building line (MPZP / road setback) · double-click or Enter to finish',
+    measure: 'Click two points to measure',
+  };
+  const area = AREA_TOOLS.includes(tool as GardenKind);
+  const text = area
+    ? `Click to add corners${draftLen ? ` (${draftLen})` : ''} · click the first point, double-click or Enter to close · Backspace undo · Esc cancel`
+    : TREE_TOOLS.includes(tool as TreeKind)
+      ? 'Click to plant'
+      : hints[tool];
+  return text ? <div className="tool-hint">{text}</div> : null;
+}
