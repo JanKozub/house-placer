@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { PostFX } from './PostFX';
+import { Attribution } from '../ui/Attribution';
 import { SceneContent } from './SceneContent';
 import { useDerived, useSite } from '../derived';
 import { useStore } from '../store';
@@ -87,6 +88,7 @@ export function PreviewView() {
         )}
       </div>
 
+      <Attribution />
       {photo && (
         <div className="photo-hud">
           {progress?.done ? (

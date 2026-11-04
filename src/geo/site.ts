@@ -15,7 +15,8 @@ export interface SiteMeta {
   origin: { E: number; N: number; lat: number; lon: number };
   bbox: { minE: number; minN: number; maxE: number; maxN: number };
   dem: { width: number; height: number; res: number; min: number; max: number };
-  ortho?: { width: number; height: number };
+  imagery?: { file: string; source: string } | null;
+  roads?: string | null;
 }
 
 export class Dem {
@@ -48,6 +49,9 @@ export class Dem {
 
 export interface Neighbor { id: string; parcel: string; ring: P2[] }
 
+/** road centreline from OpenStreetMap, in site-local coords */
+export interface Road { id: number; highway: string; name: string | null; surface: string; width: number; pts: P2[] }
+
 export interface Site {
   meta: SiteMeta;
   parcel: P2[];
@@ -58,9 +62,19 @@ export interface Site {
   /** unit vector of true north in site-local (x,z) */
   trueNorth: P2;
   orthoUrl: string | null;
+  /** imagery provider, for attribution */
+  imagerySource: string | null;
+  roads: Road[];
 }
 
-export function makeSite(meta: SiteMeta, parcelRing: [number, number][], neighbors: { id: string; parcel: string; ring: [number, number][] }[], demBuf: ArrayBuffer, hasOrtho: boolean): Site {
+export function makeSite(
+  meta: SiteMeta,
+  parcelRing: [number, number][],
+  neighbors: { id: string; parcel: string; ring: [number, number][] }[],
+  demBuf: ArrayBuffer,
+  hasOrtho: boolean,
+  roads: Road[] = [],
+): Site {
   const { E, N } = meta.origin;
   const toLocal = ([e, n]: [number, number]): P2 => [e - E, -(n - N)];
   const parcel = parcelRing.map(toLocal);
@@ -78,18 +92,19 @@ export function makeSite(meta: SiteMeta, parcelRing: [number, number][], neighbo
     dem,
     baseH: Math.floor(minH),
     trueNorth,
-    orthoUrl: hasOrtho ? `${SITE}/ortho.jpg` : null,
+    orthoUrl: hasOrtho ? `${SITE}/${meta.imagery?.file ?? 'ortho.jpg'}` : null,
+    imagerySource: hasOrtho ? meta.imagery?.source ?? 'GUGiK' : null,
+    roads,
   };
 }
 
 export async function loadSite(): Promise<Site> {
-  const [meta, parcel, neighbors, demBuf, orthoHead] = await Promise.all([
-    fetch(`${SITE}/site.json`).then((r) => r.json()),
+  const meta: SiteMeta = await fetch(`${SITE}/site.json`).then((r) => r.json());
+  const [parcel, neighbors, demBuf, roads] = await Promise.all([
     fetch(`${SITE}/parcel.json`).then((r) => r.json()),
     fetch(`${SITE}/neighbors.json`).then((r) => r.json()),
     fetch(`${SITE}/dem.bin`).then((r) => r.arrayBuffer()),
-    fetch(`${SITE}/ortho.jpg`, { method: 'HEAD' }).catch(() => null),
+    meta.roads ? fetch(`${SITE}/${meta.roads}`).then((r) => r.json()).catch(() => []) : Promise.resolve([]),
   ]);
-  const hasOrtho = !!orthoHead && orthoHead.ok && Number(orthoHead.headers.get('content-length') ?? '1') > 1000 && (orthoHead.headers.get('content-type') ?? '').includes('image');
-  return makeSite(meta, parcel.ring, neighbors, demBuf, hasOrtho);
+  return makeSite(meta, parcel.ring, neighbors, demBuf, !!meta.imagery, roads);
 }

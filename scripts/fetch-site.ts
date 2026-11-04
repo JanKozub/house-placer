@@ -6,6 +6,7 @@
  * Coordinates: EPSG:2180 (PUWG 1992). WKT from ULDK is "E N" order.
  */
 import { writeFile, mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { fromArrayBuffer } from 'geotiff';
 import proj4 from 'proj4';
 
@@ -43,41 +44,105 @@ async function uldk(params: string): Promise<string[] | null> {
   return null;
 }
 
-async function fetchOrtho(bbox: { minE: number; minN: number; maxE: number; maxN: number }) {
-  // GUGiK's WMS is flaky: try a few sizes / services with retries
-  const services = ['StandardResolution'];
-  for (const px of [ORTHO_PX, 1600, 1024]) {
-    for (const svc of services) {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const url =
-          `https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMS/${svc}?SERVICE=WMS&REQUEST=GetMap&VERSION=1.1.1&LAYERS=Raster&STYLES=` +
-          `&SRS=EPSG:2180&BBOX=${bbox.minE},${bbox.minN},${bbox.maxE},${bbox.maxN}&WIDTH=${px}&HEIGHT=${px}&FORMAT=image/jpeg`;
-        try {
-          const r = await fetch(url);
-          const buf = Buffer.from(await r.arrayBuffer());
-          // reject errors and blank (all-white) tiles, which compress to tiny files
-          if (r.ok && buf.length > px * px * 0.08 && (r.headers.get('content-type') ?? '').includes('image')) {
-            await writeFile(new URL('ortho.jpg', OUT), buf);
-            console.log('ortho', svc, px, 'bytes', buf.length);
-            return true;
-          }
-          console.log('ortho attempt failed', svc, px, r.status, buf.length);
-        } catch (e) {
-          console.log('ortho attempt error', svc, px, String(e));
+type BBox = { minE: number; minN: number; maxE: number; maxN: number };
+const UA = 'house-placer/0.1 (https://github.com/JanKozub/house-placer)';
+
+/** satellite imagery for a bbox in EPSG:2180: Esri World Imagery, falling back to the GUGiK orthophoto */
+async function fetchImagery(b: BBox, file: string, px: number) {
+  const sources = [
+    {
+      name: 'Esri World Imagery',
+      url: `https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/export?bbox=${b.minE},${b.minN},${b.maxE},${b.maxN}&bboxSR=2180&imageSR=2180&size=${px},${px}&format=jpg&f=image`,
+    },
+    {
+      name: 'GUGiK ORTO',
+      url: `https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMS/StandardResolution?SERVICE=WMS&REQUEST=GetMap&VERSION=1.1.1&LAYERS=Raster&STYLES=&SRS=EPSG:2180&BBOX=${b.minE},${b.minN},${b.maxE},${b.maxN}&WIDTH=${px}&HEIGHT=${px}&FORMAT=image/jpeg`,
+    },
+  ];
+  for (const src of sources) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await fetch(src.url, { headers: { 'User-Agent': UA } });
+        const buf = Buffer.from(await r.arrayBuffer());
+        // reject errors and blank (all-white) images, which compress to tiny files
+        if (r.ok && buf.length > px * px * 0.04 && (r.headers.get('content-type') ?? '').includes('image')) {
+          await writeFile(new URL(file, OUT), buf);
+          console.log(file, src.name, px, 'bytes', buf.length);
+          return src.name;
         }
-        await new Promise((res) => setTimeout(res, 1500));
+        console.log(file, src.name, 'failed', r.status, buf.length);
+      } catch (e) {
+        console.log(file, src.name, 'error', String(e));
       }
+      await new Promise((res) => setTimeout(res, 1500));
     }
   }
-  console.warn('Orthophoto unavailable — the app falls back to a synthetic field texture. Retry later with: npm run fetch-ortho');
+  return null;
+}
+
+const ROAD_WIDTH: Record<string, number> = {
+  primary: 7, secondary: 6.5, tertiary: 5.5, unclassified: 4.5, residential: 4.5, living_street: 4,
+  service: 3, track: 3, footway: 1.5, path: 1.2, cycleway: 2, steps: 1.5,
+};
+
+/** roads from OpenStreetMap (Overpass API), converted to site-local coordinates */
+async function fetchRoads(b: BBox, E0: number, N0: number) {
+  const [w, s] = proj4('EPSG:2180', 'EPSG:4326', [b.minE, b.minN]);
+  const [e, n] = proj4('EPSG:2180', 'EPSG:4326', [b.maxE, b.maxN]);
+  const q = `[out:json][timeout:60];way["highway"](${s},${w},${n},${e});out geom tags;`;
+  for (const host of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+    try {
+      const r = await fetch(host, {
+        method: 'POST',
+        headers: { 'User-Agent': UA, Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(q),
+      });
+      if (!r.ok) { console.log('overpass', host, r.status); continue; }
+      const d = (await r.json()) as { elements: { id: number; tags?: Record<string, string>; geometry?: { lat: number; lon: number }[] }[] };
+      const roads = d.elements
+        .filter((el) => el.geometry && el.tags?.highway)
+        .map((el) => {
+          const t = el.tags!;
+          const width = Number(t.width) || (Number(t.lanes) ? Number(t.lanes) * 3 : ROAD_WIDTH[t.highway] ?? 3);
+          return {
+            id: el.id,
+            highway: t.highway,
+            name: t.name ?? null,
+            surface: t.surface ?? (['tertiary', 'secondary', 'primary', 'residential'].includes(t.highway) ? 'asphalt' : 'unpaved'),
+            width,
+            pts: el.geometry!.map(({ lat, lon }) => {
+              const [E, N] = proj4('EPSG:4326', 'EPSG:2180', [lon, lat]);
+              return [Math.round((E - E0) * 100) / 100, Math.round(-(N - N0) * 100) / 100];
+            }),
+          };
+        });
+      await writeFile(new URL('roads.json', OUT), JSON.stringify(roads));
+      console.log('roads', roads.length, [...new Set(roads.map((r) => r.name).filter(Boolean))].join(', '));
+      return true;
+    } catch (err) {
+      console.log('overpass error', host, String(err));
+    }
+  }
   return false;
 }
 
+/** imagery (whole DEM area + sharper close-up around the plot) and roads; updates site.json */
+async function fetchMap() {
+  const { readFile } = await import('node:fs/promises');
+  const meta = JSON.parse(await readFile(new URL('site.json', OUT), 'utf8'));
+  const { E: E0, N: N0 } = meta.origin;
+  const baseSrc = await fetchImagery(meta.bbox, 'ortho.jpg', ORTHO_PX);
+  // (no close-up: Esri serves the plot area at ~0.3 m/px at most, already below the base image's 0.16 m/px)
+  const roads = (await fetchRoads(meta.bbox, E0, N0)) || existsSync(new URL('roads.json', OUT));
+  meta.imagery = baseSrc ? { file: 'ortho.jpg', source: baseSrc } : null;
+  meta.roads = roads ? 'roads.json' : null;
+  delete meta.ortho;
+  await writeFile(new URL('site.json', OUT), JSON.stringify(meta, null, 2));
+}
+
 async function main() {
-  if (process.argv.includes('--ortho-only')) {
-    const { readFile } = await import('node:fs/promises');
-    const meta = JSON.parse(await readFile(new URL('site.json', OUT), 'utf8'));
-    await fetchOrtho(meta.bbox);
+  if (process.argv.includes('--map-only') || process.argv.includes('--ortho-only')) {
+    await fetchMap();
     return;
   }
   await mkdir(OUT, { recursive: true });
@@ -134,9 +199,6 @@ async function main() {
   await writeFile(new URL('dem.bin', OUT), Buffer.from(dem.buffer));
   console.log('dem', img.getWidth(), img.getHeight(), 'range', min, max);
 
-  // 4. Orthophoto
-  await fetchOrtho(bbox);
-
   const site = {
     parcelId: PARCEL_ID,
     parcelNumber: p[1],
@@ -145,12 +207,14 @@ async function main() {
     origin: { E: E0, N: N0, lat, lon },
     bbox,
     dem: { width: img.getWidth(), height: img.getHeight(), res: DEM_RES, min, max, datum: 'PL-KRON86-NH' },
-    ortho: { width: ORTHO_PX, height: ORTHO_PX },
     fetched: new Date().toISOString(),
   };
   await writeFile(new URL('site.json', OUT), JSON.stringify(site, null, 2));
   await writeFile(new URL('parcel.json', OUT), JSON.stringify({ id: PARCEL_ID, ring }, null, 2));
   await writeFile(new URL('neighbors.json', OUT), JSON.stringify([...neighbors.values()]));
+
+  // 4. Imagery + roads
+  await fetchMap();
 }
 
 function pointInRing(x: number, y: number, ring: Ring) {

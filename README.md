@@ -11,6 +11,7 @@ using the real terrain and the real sun position, and lets you place it on the p
 **3D preview**
 - Parametric house model built from the floor plan: walls with window and door openings, two 30° gable wings meeting at a common ridge with valleys, eaves and gable overhangs, gutters, chimneys, terrace, porch/carport and interior partitions.
 - Real terrain from the GUGiK NMT 1 m model, with a building platform carved in and 1:2 embankments.
+- Satellite imagery (Esri World Imagery) draped on the terrain, and roads from OpenStreetMap painted as asphalt, gravel or paved surfaces and labelled in the plan view.
 - Sun computed for the plot's latitude and longitude at any date and time, in Polish local time (CET/CEST), corrected for PUWG 1992 grid convergence.
 - Analytic HDR sky, soft shadows, GTAO ambient occlusion, and interior and wall lights at night.
 - **Photo mode**: progressive path tracing with `three-gpu-pathtracer`, exported as a PNG.
@@ -36,11 +37,11 @@ npm test           # geometry / setback / earthwork / sun unit tests
 Site data is already in `public/site/`. To refresh it:
 
 ```bash
-npm run fetch-site    # parcel + neighbours (ULDK), DEM (NMT WCS), orthophoto (ORTO WMS)
-npm run fetch-ortho   # retry only the orthophoto (the GUGiK WMS is often unavailable)
+npm run fetch-site    # parcel + neighbours (ULDK), DEM (NMT WCS), then imagery + roads
+npm run fetch-map     # only satellite imagery (Esri, GUGiK fallback) + OSM roads (Overpass)
 ```
 
-If no orthophoto is available, the ground falls back to a synthetic field texture.
+If no imagery is available, the ground falls back to a synthetic field texture.
 
 ## Data and accuracy
 
@@ -51,7 +52,7 @@ If no orthophoto is available, the ground falls back to a synthetic field textur
   −0.02/−0.17/−0.32, opening heads +2.35, ring beam +2.76, eave soffit +2.73 with a 1.00 m
   overhang, ridge +6.32 and chimney +6.70. Interior partitions are approximate (they are only
   seen through the glass).
-- Parcel geometry and terrain © GUGiK (geoportal.gov.pl). Distances and setbacks are indicative.
+- Imagery: Powered by Esri (Esri, Maxar, Earthstar Geographics, GIS User Community). Roads © OpenStreetMap contributors (ODbL). Parcel geometry and terrain © GUGiK (geoportal.gov.pl). Distances and setbacks are indicative.
   They are not a substitute for a surveyor's site plan (mapa do celów projektowych) or for the
   local zoning plan (MPZP/WZ).
 - `docs/` holds the project drawings (ground-floor plan and section). They are © Domy w Stylu, and their copyright notice applies.

@@ -23,9 +23,10 @@
     "max": 360.9700012207031,
     "datum": "PL-KRON86-NH"
   },
-  "ortho": {
-    "width": 2048,
-    "height": 2048
+  "fetched": "2026-11-04T16:21:02.020Z",
+  "imagery": {
+    "file": "ortho.jpg",
+    "source": "Esri World Imagery"
   },
-  "fetched": "2026-11-04T16:21:02.020Z"
+  "roads": "roads.json"
 }

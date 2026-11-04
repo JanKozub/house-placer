@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import type { GardenArea, GardenKind } from '../store';
 import type { P2 } from '../placement/geom2d';
+import type { Road } from '../geo/site';
 
 function rng(seed: number) {
   let s = seed >>> 0;
@@ -55,7 +56,8 @@ export function makeDetailTexture(): THREE.CanvasTexture {
   return t;
 }
 
-const PATTERN_COLORS: Record<GardenKind | 'lawn' | 'apron', { base: string; joint?: string; module?: [number, number]; noise: number }> = {
+type PatternKind = GardenKind | 'lawn' | 'apron' | 'asphalt' | 'dirtRoad' | 'pavers';
+const PATTERN_COLORS: Record<PatternKind, { base: string; joint?: string; module?: [number, number]; noise: number }> = {
   lawn: { base: '#5f8f3a', noise: 0.22 },
   driveway: { base: '#9d9a95', joint: 'rgba(60,58,55,0.55)', module: [0.2, 0.1], noise: 0.1 },
   path: { base: '#cdc6b8', joint: 'rgba(80,75,70,0.45)', module: [0.6, 0.3], noise: 0.08 },
@@ -63,9 +65,12 @@ const PATTERN_COLORS: Record<GardenKind | 'lawn' | 'apron', { base: string; join
   flowerbed: { base: '#4d3a2a', noise: 0.35 },
   gravel: { base: '#b9b2a6', noise: 0.45 },
   apron: { base: '#a9a49b', noise: 0.45 },
+  asphalt: { base: '#5a5c5f', noise: 0.16 },
+  dirtRoad: { base: '#a2967f', noise: 0.4 },
+  pavers: { base: '#b9b1a3', joint: 'rgba(80,75,70,0.4)', module: [0.2, 0.1], noise: 0.1 },
 };
 
-function pattern(ctx: CanvasRenderingContext2D, kind: keyof typeof PATTERN_COLORS, pxPerM: number) {
+function pattern(ctx: CanvasRenderingContext2D, kind: PatternKind, pxPerM: number) {
   const spec = PATTERN_COLORS[kind];
   const tileM = 1.2;
   const s = Math.max(8, Math.round(tileM * pxPerM));
@@ -123,7 +128,7 @@ export interface OverlaySpec {
 export function paintOverlay(
   canvas: HTMLCanvasElement,
   spec: OverlaySpec,
-  opts: { parcel: P2[]; lawn: boolean; garden: GardenArea[]; apron: P2[] | null },
+  opts: { parcel: P2[]; lawn: boolean; garden: GardenArea[]; apron: P2[] | null; roads: Road[] },
 ) {
   canvas.width = canvas.height = spec.px;
   const ctx = canvas.getContext('2d')!;
@@ -135,6 +140,7 @@ export function paintOverlay(
     pts.forEach((p, i) => (i ? ctx.lineTo(...tr(p)) : ctx.moveTo(...tr(p))));
     ctx.closePath();
   };
+  paintRoads(ctx, tr, k, opts.roads);
   if (opts.lawn) {
     path(opts.parcel);
     ctx.fillStyle = pattern(ctx, 'lawn', k);
@@ -159,4 +165,40 @@ export function paintOverlay(
       }
     }
   }
+}
+
+/** OSM roads as surfaced ribbons: asphalt with a gravel shoulder, dirt tracks, paved footways */
+export function paintRoads(ctx: CanvasRenderingContext2D, tr: (p: P2) => [number, number], k: number, roads: Road[]) {
+  const order = (r: Road) => (r.surface === 'asphalt' ? 2 : r.surface === 'paving_stones' ? 1 : 0);
+  const stroke = (r: Road, w: number, style: string | CanvasPattern) => {
+    ctx.beginPath();
+    r.pts.forEach((p, i) => (i ? ctx.lineTo(...tr(p)) : ctx.moveTo(...tr(p))));
+    ctx.strokeStyle = style;
+    ctx.lineWidth = Math.max(1, w * k);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  };
+  const sorted = [...roads].sort((a, b) => order(a) - order(b));
+  for (const r of sorted) {
+    if (r.surface === 'asphalt') {
+      stroke(r, r.width + 1.0, 'rgba(150,141,124,0.95)'); // gravel shoulder
+      stroke(r, r.width, pattern(ctx, 'asphalt', k));
+    } else if (r.surface === 'paving_stones' || r.surface === 'paved' || r.surface === 'concrete') {
+      stroke(r, r.width, pattern(ctx, 'pavers', k));
+    } else {
+      stroke(r, r.width + 0.4, 'rgba(120,130,80,0.5)'); // grassy verge
+      stroke(r, r.width, pattern(ctx, 'dirtRoad', k));
+    }
+  }
+}
+
+/** base ground texture: satellite image (or a synthetic field) with roads painted on top */
+export function paintBase(canvas: HTMLCanvasElement, img: CanvasImageSource | null, fallback: HTMLCanvasElement, bounds: { x0: number; z0: number; sizeX: number; sizeZ: number }, roads: Road[]) {
+  const S = 4096;
+  canvas.width = canvas.height = S;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(img ?? fallback, 0, 0, S, S);
+  const kx = S / bounds.sizeX;
+  paintRoads(ctx, ([x, z]) => [(x - bounds.x0) * kx, (z - bounds.z0) * (S / bounds.sizeZ)], kx, roads);
 }

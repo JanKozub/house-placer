@@ -9,6 +9,7 @@ import { house } from '../house/ambrozja17';
 import { roofOutlineLocal, toLocal } from '../house/geometry';
 import { centroid, closestOnSegment, pointInPolygon, toSite, type P2 } from '../placement/geom2d';
 import { f } from '../ui/format';
+import { Attribution } from '../ui/Attribution';
 
 const OVER = 200; // overlay height (scene units) — drawn without depth test
 const FIXED_SUN = new THREE.Vector3(-0.35, 0.85, 0.4).normalize();
@@ -123,6 +124,38 @@ function SetbackOverlay() {
       {d.setbacks.buildingLine && (
         <Lines points={[v3(d.setbacks.buildingLine.from), v3(d.setbacks.buildingLine.to)]} color={d.setbacks.buildingLine.ok ? '#7c3aed' : '#dc2626'} width={2} />
       )}
+    </Overlay>
+  );
+}
+
+const ROAD_LABEL: Record<string, string> = { tertiary: 'droga powiatowa', residential: 'ulica', service: 'droga dojazdowa', track: 'droga gruntowa', footway: 'chodnik', unclassified: 'droga' };
+
+function RoadOverlay() {
+  const site = useSite();
+  const show = useStore((s) => s.layers.roads !== false);
+  if (!show) return null;
+  const c = centroid(site.parcel);
+  return (
+    <Overlay order={12}>
+      {site.roads.map((r) => {
+        // label at the point of the road closest to the plot
+        let best: P2 = r.pts[0], bd = Infinity;
+        for (let i = 1; i < r.pts.length; i++) {
+          const q = closestOnSegment(c, r.pts[i - 1], r.pts[i]);
+          const dd = Math.hypot(q[0] - c[0], q[1] - c[1]);
+          if (dd < bd) { bd = dd; best = q; }
+        }
+        return (
+          <group key={r.id}>
+            <Lines points={r.pts.map((p) => v3(p))} color={r.surface === 'asphalt' ? '#f8fafc' : '#e7d8b0'} width={1.2} dashed={r.surface !== 'asphalt'} opacity={0.7} />
+            {bd < 140 && (
+              <Label at={best} className="road-label">
+                {r.name ?? ROAD_LABEL[r.highway] ?? r.highway}
+              </Label>
+            )}
+          </group>
+        );
+      })}
     </Overlay>
   );
 }
@@ -390,6 +423,7 @@ export function PlacementView() {
           <TopCamera />
           <ControlsTarget />
           <SceneContent fixedSun={FIXED_SUN} />
+          <RoadOverlay />
           <SiteOverlay />
           <GardenOverlay draft={draft} cursor={cursor} />
           <HousePlanOverlay />
@@ -399,6 +433,7 @@ export function PlacementView() {
         </SiteContext.Provider>
       </Canvas>
       <div className="compass" title="Północ układu PUWG 1992">Pn ↑</div>
+      <Attribution />
       <ToolHint tool={tool} draftLen={draft.length} />
     </div>
   );

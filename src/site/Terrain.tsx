@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { Site } from '../geo/site';
 import { closestOnSegment, pointInPolygon, type P2 } from '../placement/geom2d';
-import { makeDetailTexture, makeFallbackBase, paintOverlay, type OverlaySpec } from './groundPaint';
+import { makeDetailTexture, makeFallbackBase, paintBase, paintOverlay, type OverlaySpec } from './groundPaint';
 import { useStore } from '../store';
 
 export interface PlatformSpec {
@@ -46,6 +46,8 @@ export function Terrain({ site, platform, apron }: { site: Site; platform: Platf
   const garden = useStore((s) => s.garden);
   const lawn = useStore((s) => s.layers.parcelLawn);
   const useOrtho = useStore((s) => s.layers.ortho);
+  const showRoads = useStore((s) => s.layers.roads !== false);
+  const roads = useMemo(() => (showRoads ? site.roads : []), [showRoads, site.roads]);
   const dem = site.dem;
 
   const geom = useMemo(() => {
@@ -125,9 +127,22 @@ export function Terrain({ site, platform, apron }: { site: Site; platform: Platf
     return t;
   }, []);
   useEffect(() => {
-    paintOverlay(overlay.image as HTMLCanvasElement, spec, { parcel: site.parcel, lawn, garden, apron });
+    paintOverlay(overlay.image as HTMLCanvasElement, spec, { parcel: site.parcel, lawn, garden, apron, roads });
     overlay.needsUpdate = true;
-  }, [overlay, spec, site, lawn, garden, apron]);
+  }, [overlay, spec, site, lawn, garden, apron, roads]);
+
+  // base: satellite (or synthetic field) + roads, composited once per change
+  const baseTex = useMemo(() => {
+    const t = new THREE.CanvasTexture(document.createElement('canvas'));
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 8;
+    return t;
+  }, []);
+  useEffect(() => {
+    const img = site.orthoUrl && useOrtho && orthoTex ? (orthoTex.image as CanvasImageSource) : null;
+    paintBase(baseTex.image as HTMLCanvasElement, img, fallback.image as HTMLCanvasElement, { x0: dem.x0, z0: dem.z0, sizeX: dem.sizeX, sizeZ: dem.sizeZ }, roads);
+    baseTex.needsUpdate = true;
+  }, [baseTex, orthoTex, useOrtho, site.orthoUrl, fallback, dem, roads]);
 
   const mat = useMemo(() => {
     const m = new THREE.MeshStandardMaterial({ roughness: 0.97, metalness: 0 });
@@ -154,7 +169,7 @@ export function Terrain({ site, platform, apron }: { site: Site; platform: Platf
             diffuseColor.rgb = mix(diffuseColor.rgb, o.rgb, o.a);
           }
           float dt = texture2D(detailMap, vMapUv * detailRepeat).r;
-          diffuseColor.rgb *= 0.78 + 0.44 * dt;`,
+          diffuseColor.rgb *= 0.86 + 0.28 * dt;`,
         );
     };
     return m;
@@ -167,12 +182,9 @@ export function Terrain({ site, platform, apron }: { site: Site; platform: Platf
     const v1 = 1 - (spec.z0 - dem.z0) / dem.sizeZ, v0 = 1 - (spec.z0 + spec.size - dem.z0) / dem.sizeZ;
     u.overlayRect.value.set(u0, v0, u1, v1);
     overlay.flipY = true;
-    const base = site.orthoUrl && useOrtho && orthoTex ? orthoTex : fallback;
-    base.colorSpace = THREE.SRGBColorSpace;
-    base.anisotropy = 8;
-    mat.map = base;
+    mat.map = baseTex;
     mat.needsUpdate = true;
-  }, [mat, spec, dem, overlay, orthoTex, fallback, site.orthoUrl, useOrtho]);
+  }, [mat, spec, dem, overlay, baseTex]);
 
   return <mesh geometry={geom} material={mat} receiveShadow name="terrain" />;
 }

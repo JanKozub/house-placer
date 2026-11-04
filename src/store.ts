@@ -59,7 +59,7 @@ export interface AppState {
   fenceEdges: number[];
   fenceHeight: number;
   buildingLine: P2[] | null;
-  layers: { parcelLawn: boolean; neighbors: boolean; ao: boolean; interiorLights: boolean; ortho: boolean; dims: boolean; plan: boolean };
+  layers: { parcelLawn: boolean; neighbors: boolean; ao: boolean; interiorLights: boolean; ortho: boolean; dims: boolean; plan: boolean; roads?: boolean };
   tool: Tool;
   selected: string | null;
 
@@ -90,7 +90,7 @@ export const useStore = create<AppState>()(
       fenceEdges: [],
       fenceHeight: 1.5,
       buildingLine: null,
-      layers: { parcelLawn: true, neighbors: true, ao: true, interiorLights: true, ortho: true, dims: true, plan: true },
+      layers: { parcelLawn: true, neighbors: true, ao: true, interiorLights: true, ortho: true, dims: true, plan: true, roads: true },
       tool: 'select',
       selected: null,
 
