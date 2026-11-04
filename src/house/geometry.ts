@@ -147,9 +147,9 @@ export function buildHouse(): HouseParts {
   const r = house.roof;
   const Hw = r.topAtWall;
   const th = r.thickness;
-  const wallTop = Hw - 0.05;
-  const gableBase = Hw - th - 0.02;
-  const porchCeil = Hw - th - 0.35;
+  const wallTop = house.wallTop;
+  const porchCeil = r.soffit;
+  const gableBase = r.soffit - 0.02;
   const P = house.plinth;
   const walls = house.walls;
 
@@ -209,7 +209,7 @@ export function buildHouse(): HouseParts {
     const { m, L } = wallMatrix(gb.a, gb.b);
     const half = L / 2;
     const s = new THREE.Shape();
-    const eaveUnder = Hw - th;
+    const eaveUnder = Hw - th / Math.cos(Math.atan(T)) + 0.02;
     s.moveTo(0, gb.base);
     s.lineTo(L, gb.base);
     s.lineTo(L, eaveUnder);
@@ -245,23 +245,15 @@ export function buildHouse(): HouseParts {
     B.add('interior', planBox(xa, xb, ya, yb, 0, house.ceilingHeight));
   }
 
-  // ---------- terrace, steps, porch ----------
-  const tr = house.terrace;
-  B.add('paving', planBox(tr.x0, tr.x1 - 0.01, tr.y0, tr.y1, -P - 0.3, -0.02));
-  for (let k = 1; k <= tr.steps - 1; k++) {
-    const y1 = tr.y0 - (k - 1) * 0.35, y0 = tr.y0 - k * 0.35;
-    B.add('paving', planBox(tr.x0, tr.x1 - 0.01, y0, y1, -P - 0.3, -0.02 - k * (P / tr.steps)));
-  }
-  const es = house.entranceSteps;
-  B.add('paving', planBox(es.x0, es.x1, es.y0, es.y0 + 1.1, -P - 0.3, -0.02));
-  B.add('paving', planBox(es.x0, es.x1, es.y0 + 1.1, es.y1, -P - 0.3, -0.17));
+  // ---------- terrace, steps, carport ----------
+  for (const sl of house.paving) B.add('paving', planBox(sl.x0, sl.x1, sl.y0, sl.y1, -P - 0.3, sl.top));
   const pc = house.porch;
-  B.add('paving', planBox(pc.x0, pc.x1, es.y1, pc.y1 + 0.3, -P - 0.3, -0.3));
-  B.add('plaster', planBox(pc.column.x - pc.column.size / 2, pc.column.x + pc.column.size / 2, pc.column.y - pc.column.size / 2, pc.column.y + pc.column.size / 2, -0.3, porchCeil + 0.05));
-  B.add('soffit', planBox(pc.x0 + 0.01, pc.x1, pc.y0, pc.y1 - 0.02, porchCeil, porchCeil + 0.3));
-  B.add('plaster', planBox(pc.x0, pc.x0 + 0.3, pc.y0, pc.y1, porchCeil, Hw - th + 0.02)); // header over porch edge
-  const us = house.utilitySteps;
-  B.add('paving', planBox(us.x0, us.x1, us.y0, us.y1, -P - 0.3, -0.17));
+  for (const [px, py] of pc.posts) {
+    const h = pc.postSize / 2;
+    B.add('plaster', planBox(px - h, px + h, py - h, py + h, -P, porchCeil + 0.02));
+  }
+  // carport ceiling, flush with the eave soffit
+  B.add('soffit', planBox(pc.x0 - 0.01, pc.x1, pc.y0, pc.y1, porchCeil, porchCeil + 0.06));
 
   // ---------- chimneys ----------
   for (const c of r.chimneys) {
@@ -305,7 +297,7 @@ function buildOpening(B: Bucket, o: Opening, _w: WallEdge, m: THREE.Matrix4, u0:
   B.add('frame', box(u0, u1, v1 - fw, v1, set, set + fd));
   B.add('frame', box(u0, u1, v0, v0 + fw, set, set + fd));
   // mullions
-  const panes = o.kind === 'hs' ? 2 : o.kind === 'terraceDoor' ? 2 : W > 1.6 ? 2 : 1;
+  const panes = o.panes ?? (o.kind === 'hs' || o.kind === 'terraceDoor' || W > 1.6 ? 2 : 1);
   for (let k = 1; k < panes; k++) {
     const um = u0 + (W * k) / panes;
     B.add('frame', box(um - fw / 2, um + fw / 2, v0, v1, set, set + fd));
@@ -388,40 +380,115 @@ function buildRoof(B: Bucket) {
     B.add('trim', gs);
   }
 
-  // gutters + downpipes along eaves
+  // ---------- boxed eaves: horizontal soffit at r.soffit, fascia, end caps ----------
   const o = r.eaveOverhang, g = r.gableOverhang;
-  const eaveTop = r.topAtWall - o * T;
-  const gy = eaveTop - th - 0.02;
+  const thv = th / Math.cos(Math.atan(T));
+  const Hw = r.topAtWall;
+  const eaveTop = Hw - o * T;
+  const S = r.soffit;
   const { x0, x1, y1 } = r.main;
   const L0 = r.living.y0, L1 = r.living.y1;
+  const soffits: Vec2[][] = [
+    [[x1, -g], [x1 + o, -g], [x1 + o, y1 + g], [x1, y1 + g]],
+    [[x0, -g], [x0 - o, -g], [x0 - o, L0 - o], [x0, L0]],
+    [[x0, L1], [x0 - o, L1 + o], [x0 - o, y1 + g], [x0, y1 + g]],
+    [[-g, L0 - o], [x0 - o, L0 - o], [x0, L0], [-g, L0]],
+    [[-g, L1], [x0, L1], [x0 - o, L1 + o], [-g, L1 + o]],
+  ];
+  for (const poly of soffits) B.add('soffit', horizontalPolygon(poly, S, true));
+  // fascia boards along the eave edges
+  const fasciae: [Vec2, Vec2][] = [
+    [[x1 + o, -g], [x1 + o, y1 + g]],
+    [[x0 - o, -g], [x0 - o, L0 - o]],
+    [[x0 - o, L1 + o], [x0 - o, y1 + g]],
+    [[-g, L0 - o], [x0 - o, L0 - o]],
+    [[-g, L1 + o], [x0 - o, L1 + o]],
+  ];
+  for (const [a, b] of fasciae) {
+    const alongX = Math.abs(b[1] - a[1]) < 1e-6;
+    const xa = alongX ? Math.min(a[0], b[0]) : a[0] - 0.015, xb = alongX ? Math.max(a[0], b[0]) : a[0] + 0.015;
+    const ya = alongX ? a[1] - 0.015 : Math.min(a[1], b[1]), yb = alongX ? a[1] + 0.015 : Math.max(a[1], b[1]);
+    B.add('trim', planBox(xa, xb, ya, yb, S, eaveTop - 0.01));
+  }
+  // end caps closing the eave boxes at the gable overhangs
+  const caps: { at: Vec2; out: Vec2; along: 'x' | 'y' }[] = [
+    { at: [x1, -g], out: [1, 0], along: 'x' },
+    { at: [x1, y1 + g], out: [1, 0], along: 'x' },
+    { at: [x0, -g], out: [-1, 0], along: 'x' },
+    { at: [x0, y1 + g], out: [-1, 0], along: 'x' },
+    { at: [-g, L0], out: [0, -1], along: 'y' },
+    { at: [-g, L1], out: [0, 1], along: 'y' },
+  ];
+  for (const c of caps) {
+    const p0 = c.at, p1: Vec2 = [c.at[0] + c.out[0] * o, c.at[1] + c.out[1] * o];
+    const [ax, az] = toLocal(...p0), [bx, bz] = toLocal(...p1);
+    const pos = [ax, S, az, bx, S, bz, bx, eaveTop - thv, bz, ax, S, az, bx, eaveTop - thv, bz, ax, Hw - thv, az];
+    const gc = new THREE.BufferGeometry();
+    gc.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    gc.computeVertexNormals();
+    B.add('trim', gc);
+  }
+
+  // gutters hung on the fascia
+  const gy = eaveTop - 0.12;
   const gutters: [Vec2, Vec2][] = [
-    [[x1 + o + 0.06, -g], [x1 + o + 0.06, y1 + g]],
-    [[x0 - o - 0.06, -g], [x0 - o - 0.06, L0 - o]],
-    [[x0 - o - 0.06, L1 + o], [x0 - o - 0.06, y1 + g]],
-    [[-g, L0 - o - 0.06], [x0 - o, L0 - o - 0.06]],
-    [[-g, L1 + o + 0.06], [x0 - o, L1 + o + 0.06]],
+    [[x1 + o + 0.08, -g], [x1 + o + 0.08, y1 + g]],
+    [[x0 - o - 0.08, -g], [x0 - o - 0.08, L0 - o]],
+    [[x0 - o - 0.08, L1 + o], [x0 - o - 0.08, y1 + g]],
+    [[-g, L0 - o - 0.08], [x0 - o, L0 - o - 0.08]],
+    [[-g, L1 + o + 0.08], [x0 - o, L1 + o + 0.08]],
   ];
   for (const [a, b] of gutters) {
     const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    const cyl = new THREE.CylinderGeometry(0.07, 0.07, len, 10, 1, true, 0, Math.PI);
-    // lay along axis
+    const cyl = new THREE.CylinderGeometry(0.07, 0.07, len, 10, 1, true, Math.PI / 2, Math.PI);
     const [ax, az] = toLocal((a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
     const alongX = Math.abs(b[0] - a[0]) > Math.abs(b[1] - a[1]);
-    const mtx = new THREE.Matrix4();
-    if (alongX) mtx.makeRotationZ(Math.PI / 2).premultiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
-    else mtx.makeRotationX(Math.PI / 2).premultiply(new THREE.Matrix4().makeRotationZ(Math.PI / 2));
+    const mtx = alongX ? new THREE.Matrix4().makeRotationZ(Math.PI / 2) : new THREE.Matrix4().makeRotationX(Math.PI / 2);
     mtx.premultiply(new THREE.Matrix4().makeTranslation(ax, gy, az));
     B.add('gutter', transform(cyl, mtx));
   }
-  const pipes: Vec2[] = [
-    [x1 + 0.1, 0.35], [x1 + 0.1, y1 - 0.35], [x0 - 0.1, 0.35], [0.35, L0 - 0.1], [0.35, L1 + 0.1], [x0 - 0.1, y1 - 0.2],
+  // downpipes: run down the wall at corners, with a swan-neck under the soffit to the gutter
+  const pipes: { wall: Vec2; gutter: Vec2 }[] = [
+    { wall: [x1 + 0.08, 0.4], gutter: [x1 + o + 0.08, 0.4] },
+    { wall: [x1 + 0.08, y1 - 0.4], gutter: [x1 + o + 0.08, y1 - 0.4] },
+    { wall: [x0 - 0.08, 0.4], gutter: [x0 - o - 0.08, 0.4] },
+    { wall: [0.4, L0 - 0.08], gutter: [0.4, L0 - o - 0.08] },
+    { wall: [0.4, L1 + 0.08], gutter: [0.4, L1 + o + 0.08] },
   ];
-  for (const [X, Y] of pipes) {
-    const cyl = new THREE.CylinderGeometry(0.05, 0.05, gy + house.plinth, 8);
-    const [lx, lz] = toLocal(X, Y);
-    cyl.translate(lx, (gy - house.plinth) / 2, lz);
-    B.add('gutter', cyl);
+  for (const p of pipes) {
+    const [wx, wz] = toLocal(...p.wall), [gx, gz] = toLocal(...p.gutter);
+    const yTop = S - 0.15;
+    const v = new THREE.CylinderGeometry(0.05, 0.05, yTop + house.plinth, 8);
+    v.translate(wx, (yTop - house.plinth) / 2, wz);
+    B.add('gutter', v);
+    const len = Math.hypot(gx - wx, gz - wz);
+    const h = new THREE.CylinderGeometry(0.045, 0.045, len, 8);
+    const mtx = Math.abs(gx - wx) > Math.abs(gz - wz) ? new THREE.Matrix4().makeRotationZ(Math.PI / 2) : new THREE.Matrix4().makeRotationX(Math.PI / 2);
+    mtx.premultiply(new THREE.Matrix4().makeTranslation((wx + gx) / 2, yTop, (wz + gz) / 2));
+    B.add('gutter', transform(h, mtx));
+    const rise = new THREE.CylinderGeometry(0.045, 0.045, gy - yTop, 8);
+    rise.translate(gx, (gy + yTop) / 2, gz);
+    B.add('gutter', rise);
   }
+}
+
+/** horizontal polygon (plan coords) at height y; faceDown → visible from below */
+function horizontalPolygon(poly: Vec2[], y: number, faceDown: boolean) {
+  const pts = poly.map(([X, Y]) => new THREE.Vector2(...toLocal(X, Y)));
+  const tris = THREE.ShapeUtils.triangulateShape(pts, []);
+  const pos: number[] = [], uv: number[] = [];
+  for (const [a, b, c] of tris) {
+    const A = pts[a], Bp = pts[b], C = pts[c];
+    // cross in (x,z): sign of y component of (B−A)×(C−A) = (Bz−Az)(Cx−Ax) − (Bx−Ax)(Cz−Az)
+    const ny = (Bp.y - A.y) * (C.x - A.x) - (Bp.x - A.x) * (C.y - A.y);
+    const order = (ny < 0) === faceDown ? [A, Bp, C] : [A, C, Bp];
+    for (const p of order) { pos.push(p.x, y, p.y); uv.push(p.x, p.y); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();
+  return g;
 }
 
 /** exterior footprint polygon in house-local plan coords (x, z) */

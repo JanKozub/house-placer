@@ -42,10 +42,13 @@ If no orthophoto is available, the ground falls back to a synthetic field textur
 
 ## Data and accuracy
 
-- The house is described in `src/house/ambrozja17.ts`, transcribed from the publicly available
-  floor plan and specification. Dimensions and areas match the specification (16.85 × 22.85 m,
-  footprint 260.7 m², ridge 6.94 m). Opening positions and sill heights are approximate until they
-  are checked against the full project drawings.
+- The house is described in `src/house/ambrozja17.ts`, taken from the project's dimensioned
+  ground-floor plan and section. That covers the wall positions, both 9.05 m wings and every
+  opening: O37s 180×150, OBD17 180×235, FIX1/2/3, Oind1 270×150, O31 90×150, the Dz1/Dz2 doors
+  and the Hörmann 450×225 garage door. It also covers the levels: ground −0.62, terrace
+  −0.02/−0.17/−0.32, opening heads +2.35, ring beam +2.76, eave soffit +2.73 with a 1.00 m
+  overhang, ridge +6.32 and chimney +6.70. Interior partitions are approximate (they are only
+  seen through the glass).
 - Parcel geometry and terrain © GUGiK (geoportal.gov.pl). Distances and setbacks are indicative.
   They are not a substitute for a surveyor's site plan (mapa do celów projektowych) or for the
   local zoning plan (MPZP/WZ).

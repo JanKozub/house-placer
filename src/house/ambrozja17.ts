@@ -1,13 +1,13 @@
 /**
  * Ambrozja 17 (BSA2409), Domy w Stylu, as parametric data.
  *
- * Source: extradom.pl floor plan (scaled at 43.8 px/m against the 16.85 × 22.85 m
- * dimension lines), site plan, renders and the technical data sheet.
- * TODO: refine openings and heights against the PDF drawings in /docs once available.
+ * Source: the project's dimensioned ground-floor plan (rzut parteru) and section (przekrój)
+ * — dimension chains in cm, levels in m. The PDF plan is drawn rotated: its horizontal axis
+ * is our Y (0 → 22.85) and its top edge is our east wall (X = 16.85).
  *
- * Plan coordinates: X → right, Y → down (as on the drawing), metres, origin at the
+ * Plan coordinates: X → right, Y → down (as in the marketing plan), metres, origin at the
  * top-left corner of the outer wall outline. "Front" (entrance + garage) is +Y.
- * ±0.00 = finished ground floor level.
+ * ±0.00 = finished ground floor level; surrounding ground at −0.62.
  */
 
 export type Vec2 = [number, number];
@@ -23,26 +23,32 @@ export interface Opening {
   height: number;
   sill: number;
   kind: OpeningKind;
+  /** number of glazed panes (mullions = panes − 1) */
+  panes?: number;
+  /** project symbol, for reference */
+  ref?: string;
 }
 
 export interface WallEdge {
   id: string;
   a: Vec2;
   b: Vec2;
-  /** gable walls rise to the roof underside */
-  gable?: { ridgeAt: number; halfSpan: number };
 }
+
+export interface Slab { x0: number; x1: number; y0: number; y1: number; top: number }
 
 export const PITCH_DEG = 30;
 const T = Math.tan((PITCH_DEG * Math.PI) / 180);
 
-const WING_W = 9.09; // both wings
-const MAIN_X0 = 7.76;
+const WING_W = 9.05; // both wings (plan chains: 905)
+const MAIN_X0 = 7.8; // bedroom-wing west face (1685 − 905)
 const MAIN_X1 = 16.85;
-const LIV_Y0 = 6.62;
-const LIV_Y1 = 15.7;
-const RIDGE_X = (MAIN_X0 + MAIN_X1) / 2; // 12.305
-const RIDGE_Y = (LIV_Y0 + LIV_Y1) / 2; // 11.16
+const LIV_Y0 = 6.6; // living wing (chain 660 | 905 | 720)
+const LIV_Y1 = 15.65;
+const GAR_X0 = 10.4; // garage west wall face (chain 20+25+575+25)
+const RIDGE_X = (MAIN_X0 + MAIN_X1) / 2; // 12.325
+const RIDGE_Y = (LIV_Y0 + LIV_Y1) / 2; // 11.125
+const HEAD = 2.35; // window/door head level (section)
 
 export const house = {
   name: 'Ambrozja 17',
@@ -51,33 +57,36 @@ export const house = {
   depth: 22.85,
   usableArea: 167.84,
   footprintArea: 260.7,
-  heightTotal: 6.94,
+  heightTotal: 6.94, // −0.62 → +6.32
   pitchDeg: PITCH_DEG,
 
-  /** finished floor above surrounding platform (cokół) */
-  plinth: 0.45,
-  wallThickness: 0.44,
+  /** finished floor above surrounding ground */
+  plinth: 0.62,
+  wallThickness: 0.45, // 25 cm hollow brick + 20 cm EPS
   innerWallThickness: 0.12,
-  ceilingHeight: 2.8,
+  ceilingHeight: 2.62,
+  /** top of ring beam (wieniec) */
+  wallTop: 2.76,
   slabThickness: 0.3,
+  garageFloor: -0.27,
 
   roof: {
-    thickness: 0.25,
-    eaveOverhang: 0.6,
-    gableOverhang: 0.4,
-    /** roof top surface height at the outer wall face, derived so the ridge = 6.94 m above terrain */
+    ridgeTop: 6.32,
+    thickness: 0.3,
+    eaveOverhang: 1.0,
+    gableOverhang: 0.5,
+    /** underside of the boxed eave soffit */
+    soffit: 2.73,
+    /** roof top-surface height at the outer wall face */
     get topAtWall() {
-      return house.heightTotal - house.plinth - (WING_W / 2) * T;
+      return house.roof.ridgeTop - (WING_W / 2) * T;
     },
     ridgeX: RIDGE_X,
     ridgeY: RIDGE_Y,
     wingWidth: WING_W,
     main: { x0: MAIN_X0, x1: MAIN_X1, y0: 0, y1: 22.85 },
     living: { x0: 0, y0: LIV_Y0, y1: LIV_Y1 },
-    chimneys: [
-      { x: 7.95, y: 9.0, w: 0.55, d: 0.55, top: 6.0 }, // fireplace (living)
-      { x: 13.2, y: 12.4, w: 0.55, d: 0.75, top: 7.0 }, // boiler room
-    ],
+    chimneys: [{ x: 8.6, y: 9.88, w: 0.58, d: 0.84, top: 6.7 }],
   },
 
   /** exterior wall outline, clockwise as drawn (Y down) */
@@ -87,90 +96,107 @@ export const house = {
     [MAIN_X0, 0],
     [MAIN_X1, 0],
     [MAIN_X1, 22.85],
-    [10.23, 22.85],
-    [10.23, LIV_Y1],
+    [GAR_X0, 22.85],
+    [GAR_X0, LIV_Y1],
     [0, LIV_Y1],
   ] as Vec2[],
 
   walls: [
     { id: 'livN', a: [0, LIV_Y0], b: [MAIN_X0, LIV_Y0] },
     { id: 'bedW', a: [MAIN_X0, LIV_Y0], b: [MAIN_X0, 0] },
-    { id: 'gableN', a: [MAIN_X0, 0], b: [MAIN_X1, 0], gable: { ridgeAt: RIDGE_X, halfSpan: WING_W / 2 } },
+    { id: 'gableN', a: [MAIN_X0, 0], b: [MAIN_X1, 0] },
     { id: 'east', a: [MAIN_X1, 0], b: [MAIN_X1, 22.85] },
-    { id: 'gableS', a: [MAIN_X1, 22.85], b: [10.23, 22.85], gable: { ridgeAt: RIDGE_X, halfSpan: WING_W / 2 } },
-    { id: 'garW', a: [10.23, 22.85], b: [10.23, LIV_Y1] },
-    { id: 'front', a: [10.23, LIV_Y1], b: [0, LIV_Y1] },
-    { id: 'gableW', a: [0, LIV_Y1], b: [0, LIV_Y0], gable: { ridgeAt: RIDGE_Y, halfSpan: WING_W / 2 } },
+    { id: 'gableS', a: [MAIN_X1, 22.85], b: [GAR_X0, 22.85] },
+    { id: 'garW', a: [GAR_X0, 22.85], b: [GAR_X0, LIV_Y1] },
+    { id: 'front', a: [GAR_X0, LIV_Y1], b: [0, LIV_Y1] },
+    { id: 'gableW', a: [0, LIV_Y1], b: [0, LIV_Y0] },
   ] as WallEdge[],
 
   openings: [
-    // terrace side (north of living wing)
-    { wall: 'livN', at: 1.6, width: 1.3, height: 2.3, sill: 0, kind: 'terraceDoor' },
-    { wall: 'livN', at: 4.4, width: 2.4, height: 2.3, sill: 0, kind: 'hs' },
-    // bedroom wing, terrace side
-    { wall: 'bedW', at: 2.6, width: 1.4, height: 2.3, sill: 0, kind: 'terraceDoor' },
-    { wall: 'bedW', at: 4.85, width: 0.9, height: 0.9, sill: 1.4, kind: 'window' },
-    // east: three bedrooms + utility door
-    { wall: 'east', at: 3.7, width: 1.5, height: 1.5, sill: 0.85, kind: 'window' },
-    { wall: 'east', at: 7.2, width: 1.5, height: 1.5, sill: 0.85, kind: 'window' },
-    { wall: 'east', at: 10.6, width: 1.5, height: 1.5, sill: 0.85, kind: 'window' },
-    { wall: 'east', at: 14.55, width: 1.0, height: 2.2, sill: 0, kind: 'door' },
-    // front gable: garage door
-    { wall: 'gableS', at: 13.6, width: 4.6, height: 2.3, sill: -0.3, kind: 'garage' },
-    // front of living wing: kitchen window + entrance
-    { wall: 'front', at: 5.3, width: 2.0, height: 1.2, sill: 1.05, kind: 'window' },
-    { wall: 'front', at: 9.25, width: 1.1, height: 2.3, sill: 0, kind: 'entrance' },
-    // west gable: tall living-room glazing
-    { wall: 'gableW', at: 10.35, width: 1.8, height: 2.3, sill: 0, kind: 'fixed' },
+    // living room → terrace: OBD17 180×235 door + FIX1 90×235 (one 270 unit), FIX2 180×235
+    { wall: 'livN', at: 2.1, width: 2.7, height: HEAD, sill: 0, kind: 'terraceDoor', panes: 3, ref: 'OBD17 + FIX1' },
+    { wall: 'livN', at: 6.15, width: 1.8, height: HEAD, sill: 0, kind: 'fixed', panes: 2, ref: 'FIX2' },
+    // bedroom 1/9 → terrace (OBD17 180×235), bathroom 1/7 (O31 90×150)
+    { wall: 'bedW', at: 2.7, width: 1.8, height: HEAD, sill: 0, kind: 'terraceDoor', panes: 2, ref: 'OBD17' },
+    { wall: 'bedW', at: 4.83, width: 0.9, height: 1.5, sill: HEAD - 1.5, kind: 'window', ref: 'O31' },
+    // east: three bedrooms (O37s 180×150) + boiler-room door (Dz2 80/200)
+    { wall: 'east', at: 3.7, width: 1.8, height: 1.5, sill: HEAD - 1.5, kind: 'window', panes: 2, ref: 'O37s' },
+    { wall: 'east', at: 7.15, width: 1.8, height: 1.5, sill: HEAD - 1.5, kind: 'window', panes: 2, ref: 'O37s' },
+    { wall: 'east', at: 10.5, width: 1.8, height: 1.5, sill: HEAD - 1.5, kind: 'window', panes: 2, ref: 'O37s' },
+    { wall: 'east', at: 14.545, width: 0.91, height: 2.07, sill: 0, kind: 'door', ref: 'Dz2' },
+    // front gable: garage door DG Hörmann 450×225
+    { wall: 'gableS', at: 13.525, width: 4.5, height: 2.25, sill: -0.27, kind: 'garage', ref: 'DG' },
+    // front of living wing: kitchen window Oind1 270×150 + entrance door Dz1 90/200
+    { wall: 'front', at: 5.44, width: 2.7, height: 1.5, sill: HEAD - 1.5, kind: 'window', panes: 3, ref: 'Oind1' },
+    { wall: 'front', at: 9.295, width: 1.01, height: 2.1, sill: 0, kind: 'entrance', ref: 'Dz1' },
+    // west gable: FIX3 270×235 living-room glazing
+    { wall: 'gableW', at: 10.25, width: 2.7, height: HEAD, sill: 0, kind: 'fixed', panes: 3, ref: 'FIX3' },
   ] as Opening[],
 
   /** interior partitions [x1,y1,x2,y2] (approximate, for views through glass) */
   partitions: [
-    [7.76, 4.18, 10.46, 4.18],
-    [10.46, 4.18, 10.46, 10.2],
-    [7.76, 7.85, 10.46, 7.85],
-    [7.76, 10.2, 10.46, 10.2],
-    [7.76, 6.62, 7.76, 10.2],
-    [12.25, 0, 12.25, 11.7],
-    [12.25, 2.0, 16.85, 2.0],
-    [12.25, 5.2, 16.85, 5.2],
-    [12.25, 9.1, 16.85, 9.1],
-    [11.0, 11.7, 16.85, 11.7],
-    [0, 12.85, 2.75, 12.85],
-    [2.75, 12.85, 2.75, 15.7],
-    [8.17, 13.0, 8.17, 15.7],
-    [9.9, 14.0, 9.9, 15.7],
-    [10.23, 15.37, 16.85, 15.37],
-    [12.9, 11.7, 12.9, 15.37],
-    [11.0, 11.7, 11.0, 15.37],
+    [MAIN_X0, 4.2, 10.5, 4.2],
+    [10.5, 4.2, 10.5, 10.2],
+    [MAIN_X0, 7.05, 10.5, 7.05],
+    [MAIN_X0, 10.2, 10.5, 10.2],
+    [MAIN_X0, LIV_Y0, MAIN_X0, 10.2],
+    [12.45, 0, 12.45, 11.6],
+    [12.45, 1.95, 16.85, 1.95],
+    [12.45, 5.3, 16.85, 5.3],
+    [12.45, 8.75, 16.85, 8.75],
+    [11.0, 11.6, 16.85, 11.6],
+    [0, 12.6, 2.6, 12.6],
+    [2.6, 12.6, 2.6, LIV_Y1],
+    [8.3, 12.8, 8.3, LIV_Y1],
+    [9.95, 13.9, 9.95, LIV_Y1],
+    [GAR_X0, 15.0, 16.85, 15.0],
+    [12.9, 11.6, 12.9, 15.0],
+    [11.0, 11.6, 11.0, 15.0],
   ] as [number, number, number, number][],
 
-  /** room labels for the plan view */
+  /** room labels for the plan view (numbers as in the project) */
   rooms: [
-    { name: 'Salon + jadalnia', area: 38.5, at: [3.2, 9.3] },
-    { name: 'Kuchnia', area: 15.36, at: [5.3, 14.2] },
-    { name: 'Spiżarnia', area: 5.77, at: [1.3, 14.2] },
-    { name: 'Hol', area: 11.98, at: [9.6, 12.0] },
-    { name: 'Sypialnia', area: 14.11, at: [9.9, 2.1] },
-    { name: 'Łazienka', area: 7.83, at: [9.1, 6.0] },
-    { name: 'Łazienka', area: 5.04, at: [9.1, 9.0] },
-    { name: 'Korytarz', area: 8.92, at: [11.35, 7.0] },
-    { name: 'Garderoba', area: 5.76, at: [14.5, 1.0] },
-    { name: 'Pokój', area: 12.47, at: [14.5, 3.6] },
-    { name: 'Pokój', area: 13.6, at: [14.5, 7.2] },
-    { name: 'Pokój', area: 10.63, at: [14.5, 10.4] },
-    { name: 'Pralnia', area: 4.35, at: [11.95, 13.5] },
-    { name: 'Kotłownia', area: 7.52, at: [14.9, 13.5] },
-    { name: 'Garaż', area: 38.87, at: [13.55, 19.2] },
+    { name: '1/5 Salon + jadalnia', area: 38.5, at: [3.6, 9.3] },
+    { name: '1/3 Kuchnia', area: 15.36, at: [5.4, 14.0] },
+    { name: '1/4 Spiżarnia', area: 5.77, at: [1.3, 14.1] },
+    { name: '1/2 Komunikacja', area: 11.98, at: [9.6, 12.0] },
+    { name: '1/1 Wiatrołap', area: 3.58, at: [9.1, 14.8] },
+    { name: '1/9 Sypialnia', area: 14.11, at: [10.1, 2.1] },
+    { name: '1/7 Łazienka', area: 7.83, at: [9.1, 5.6] },
+    { name: '1/6 Łazienka', area: 5.04, at: [9.1, 8.6] },
+    { name: '1/8 Korytarz', area: 8.92, at: [11.45, 6.8] },
+    { name: '1/10 Garderoba', area: 5.76, at: [14.6, 0.95] },
+    { name: '1/11 Sypialnia', area: 12.47, at: [14.6, 3.6] },
+    { name: '1/12 Pokój', area: 13.6, at: [14.6, 7.0] },
+    { name: '1/13 Pokój', area: 10.63, at: [14.6, 10.2] },
+    { name: '1/15 Pralnia', area: 4.35, at: [11.95, 13.3] },
+    { name: '1/14 Kotłownia', area: 7.52, at: [14.9, 13.3] },
+    { name: '1/17 Garaż', area: 38.87, at: [13.6, 19.0] },
   ] as { name: string; area: number; at: Vec2 }[],
 
-  /** terrace in the inner corner, at floor level, with steps on the garden side */
-  terrace: { x0: 0, x1: MAIN_X0, y0: 0.6, y1: LIV_Y0, stepsSide: 'north' as const, steps: 3 },
-  /** entrance steps in front of the door */
-  entranceSteps: { x0: 8.2, x1: 10.23, y0: LIV_Y1, y1: 17.2 },
-  /** covered porch / carport under the main roof, west of the garage */
-  porch: { x0: MAIN_X0, x1: 10.23, y0: LIV_Y1, y1: 22.85, column: { x: 8.05, y: 22.6, size: 0.4 } },
-  utilitySteps: { x0: MAIN_X1, x1: MAIN_X1 + 0.9, y0: 14.0, y1: 15.1 },
+  /** paved slabs: terrace levels (−0.02 / −0.17 / −0.32), entrance & boiler-room steps, carport */
+  paving: [
+    // terrace in the inner corner
+    { x0: 4.43, x1: MAIN_X0, y0: 0.0, y1: LIV_Y0, top: -0.02 },
+    { x0: 0.14, x1: 4.43, y0: 3.59, y1: LIV_Y0, top: -0.02 },
+    { x0: 2.27, x1: 4.43, y0: -0.52, y1: 3.59, top: -0.17 },
+    { x0: 0.14, x1: 2.27, y0: 0.29, y1: 3.59, top: -0.32 },
+    // entrance landing + 3 steps (4 × 15 cm risers) under the carport roof
+    { x0: 8.4, x1: GAR_X0, y0: LIV_Y1, y1: 17.1, top: -0.02 },
+    { x0: 8.4, x1: GAR_X0, y0: 17.1, y1: 17.4, top: -0.17 },
+    { x0: 8.4, x1: GAR_X0, y0: 17.4, y1: 17.7, top: -0.32 },
+    { x0: 8.4, x1: GAR_X0, y0: 17.7, y1: 18.0, top: -0.47 },
+    // carport paving
+    { x0: 7.85, x1: GAR_X0, y0: LIV_Y1, y1: 23.1, top: -0.6 },
+    // boiler-room door landing + steps
+    { x0: MAIN_X1, x1: MAIN_X1 + 0.45, y0: 13.95, y1: 15.15, top: -0.02 },
+    { x0: MAIN_X1 + 0.45, x1: MAIN_X1 + 0.75, y0: 13.95, y1: 15.15, top: -0.17 },
+    { x0: MAIN_X1 + 0.75, x1: MAIN_X1 + 1.05, y0: 13.95, y1: 15.15, top: -0.32 },
+    { x0: MAIN_X1 + 1.05, x1: MAIN_X1 + 1.35, y0: 13.95, y1: 15.15, top: -0.47 },
+  ] as Slab[],
+
+  /** carport (wiata) west of the garage, under the main roof, with two clad posts */
+  porch: { x0: MAIN_X0, x1: GAR_X0, y0: LIV_Y1, y1: 22.85, posts: [[8.125, 17.7], [8.125, 22.575]] as Vec2[], postSize: 0.55 },
 } as const;
 
 /** centre of the outline bbox; house-local origin */

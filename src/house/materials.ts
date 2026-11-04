@@ -148,7 +148,7 @@ export function createMaterials(palette: Palette): MaterialSet {
   const m: Record<PartName, THREE.Material> = {
     plaster: new THREE.MeshStandardMaterial({ color: palette.plaster, roughness: 0.92, bumpMap: plasterBump, bumpScale: 0.6 }),
     plinth: new THREE.MeshStandardMaterial({ color: palette.plinth, roughness: 0.85, bumpMap: plasterBump, bumpScale: 0.8 }),
-    roof: new THREE.MeshStandardMaterial({ color: palette.roof, roughness: 0.5, metalness: 0.4, bumpMap: roofBump, bumpScale: 2.5, envMapIntensity: 0.7 }),
+    roof: new THREE.MeshStandardMaterial({ color: palette.roof, roughness: 0.55, metalness: 0.25, bumpMap: roofBump, bumpScale: 2.5, envMapIntensity: 0.45 }),
     soffit: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7, map: textures.wood(palette.wood) }),
     trim: new THREE.MeshStandardMaterial({ color: palette.roof, roughness: 0.45, metalness: 0.6, side: THREE.DoubleSide }),
     frame: new THREE.MeshStandardMaterial({ color: palette.frames, roughness: 0.45, metalness: 0.2 }),

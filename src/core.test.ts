@@ -10,15 +10,17 @@ import { makeSite } from './geo/site';
 import { sunState, warsawDate } from './site/sun';
 
 describe('house model', () => {
-  it('footprint matches the project data (260.7 m², 16.85 × 22.85 m)', () => {
+  it('footprint matches the drawing (16.85 × 22.85 m; ≈ 258.7 m² of walls, spec 260.7 incl. carport posts/rounding)', () => {
     const fp = footprintLocal();
-    expect(polygonArea(fp)).toBeCloseTo(260.7, 0);
+    expect(polygonArea(fp)).toBeGreaterThan(257.5);
+    expect(polygonArea(fp)).toBeLessThan(261);
     const xs = fp.map((p) => p[0]), zs = fp.map((p) => p[1]);
     expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(16.85, 2);
     expect(Math.max(...zs) - Math.min(...zs)).toBeCloseTo(22.85, 2);
   });
 
-  it('ridge is 6.94 m above terrain (plinth + roof)', () => {
+  it('ridge is +6.32 / 6.94 m above terrain (section)', () => {
+    expect(roofTopAt(house.roof.ridgeX, 5)!).toBeCloseTo(6.32, 3);
     const ridge = roofTopAt(house.roof.ridgeX, 5)!;
     expect(ridge + house.plinth).toBeCloseTo(6.94, 2);
     // both wings share the ridge height
@@ -36,6 +38,19 @@ describe('house model', () => {
     expect(box.max.y + house.plinth).toBeGreaterThan(6.9); // chimney above ridge
     expect(parts.glass).toBeTruthy();
     expect(parts.roof!.getAttribute('position').count).toBeGreaterThan(0);
+  });
+
+  it('openings match the project schedule and fit inside their walls', () => {
+    expect(house.openings).toHaveLength(12);
+    for (const o of house.openings) {
+      const w = house.walls.find((ww) => ww.id === o.wall)!;
+      const horiz = Math.abs(w.a[1] - w.b[1]) < 1e-6;
+      const lo = Math.min(horiz ? w.a[0] : w.a[1], horiz ? w.b[0] : w.b[1]);
+      const hi = Math.max(horiz ? w.a[0] : w.a[1], horiz ? w.b[0] : w.b[1]);
+      expect(o.at - o.width / 2).toBeGreaterThan(lo + 0.3);
+      expect(o.at + o.width / 2).toBeLessThan(hi - 0.3);
+      expect(o.sill + o.height).toBeLessThanOrEqual(2.35 + 1e-9); // all heads at +2.35 or lower
+    }
   });
 });
 
@@ -61,7 +76,7 @@ describe('placement transforms', () => {
 
   it('mirroring keeps area and bounding size', () => {
     const a = footprintLocal().map((p) => toSite(p, { x: 0, z: 0, bearing: 30, mirror: true }));
-    expect(polygonArea(a)).toBeCloseTo(260.7, 0);
+    expect(polygonArea(a)).toBeCloseTo(polygonArea(footprintLocal()), 6);
   });
 });
 
