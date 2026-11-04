@@ -193,11 +193,58 @@ export function paintRoads(ctx: CanvasRenderingContext2D, tr: (p: P2) => [number
   }
 }
 
-/** base ground texture: satellite image (or a synthetic field) with roads painted on top */
-export function paintBase(canvas: HTMLCanvasElement, img: CanvasImageSource | null, fallback: HTMLCanvasElement, bounds: { x0: number; z0: number; sizeX: number; sizeZ: number }, roads: Road[]) {
+/**
+ * The close-up satellite photo is a different capture than the wide-area imagery around it (paler,
+ * other date), so it would show as a light square. Match its colours to the wide imagery of the same
+ * area (per-channel mean and spread) and fade its border into that imagery.
+ */
+export function matchImagery(img: CanvasImageSource & { width: number; height: number }, ref: HTMLCanvasElement, featherFrac = 0.12): HTMLCanvasElement {
+  const W = img.width, H = img.height;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d', { willReadFrequently: true })!;
+  ctx.drawImage(img, 0, 0);
+  const px = ctx.getImageData(0, 0, W, H);
+  const d = px.data;
+  const stats = (data: Uint8ClampedArray, stride: number) => {
+    const m = [0, 0, 0], q = [0, 0, 0];
+    let n = 0;
+    for (let i = 0; i < data.length; i += 4 * stride) {
+      for (let ch = 0; ch < 3; ch++) { m[ch] += data[i + ch]; q[ch] += data[i + ch] * data[i + ch]; }
+      n++;
+    }
+    return m.map((v, ch) => ({ mean: v / n, sd: Math.sqrt(Math.max(1, q[ch] / n - (v / n) ** 2)) }));
+  };
+  const rctx = ref.getContext('2d', { willReadFrequently: true })!;
+  const rs = stats(rctx.getImageData(0, 0, ref.width, ref.height).data, 1);
+  const ss = stats(d, 7);
+  const a = rs.map((r, ch) => r.sd / ss[ch].sd), b = rs.map((r, ch) => r.mean - ss[ch].mean * a[ch]);
+  const F = Math.max(1, Math.round(Math.min(W, H) * featherFrac));
+  for (let y = 0, i = 0; y < H; y++) {
+    const ey = Math.min(y, H - 1 - y);
+    for (let x = 0; x < W; x++, i += 4) {
+      d[i] = d[i] * a[0] + b[0];
+      d[i + 1] = d[i + 1] * a[1] + b[1];
+      d[i + 2] = d[i + 2] * a[2] + b[2];
+      const e = Math.min(ey, x, W - 1 - x);
+      if (e < F) { const t = e / F; d[i + 3] = 255 * t * t * (3 - 2 * t); }
+    }
+  }
+  ctx.putImageData(px, 0, 0);
+  return c;
+}
+
+/** base ground texture: satellite image (or a synthetic field) with roads painted on top; `under` is
+ * the wide-area imagery of the same extent, drawn first so a matched, feathered `img` blends into it */
+export function paintBase(canvas: HTMLCanvasElement, img: CanvasImageSource | null, fallback: HTMLCanvasElement, bounds: { x0: number; z0: number; sizeX: number; sizeZ: number }, roads: Road[], under: HTMLCanvasElement | null = null) {
   const S = 4096;
   canvas.width = canvas.height = S;
   const ctx = canvas.getContext('2d')!;
+  if (img && under) {
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(under, 0, 0, S, S);
+  }
   ctx.drawImage(img ?? fallback, 0, 0, S, S);
   const kx = S / bounds.sizeX;
   paintRoads(ctx, ([x, z]) => [(x - bounds.x0) * kx, (z - bounds.z0) * (S / bounds.sizeZ)], kx, roads);

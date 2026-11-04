@@ -95,39 +95,51 @@ function ringTiles(ring: LandRing, baseH: number, inner: Rect | null, step: numb
   return out;
 }
 
-/** stitch n×n imagery tiles (row-major from the north-west) into one texture */
+const stitched = new WeakMap<LandRing, Promise<HTMLCanvasElement | null>>();
+
+/** the ring's n×n imagery tiles (row-major from the north-west) stitched into one canvas; cached */
+export function ringImage(ring: LandRing): Promise<HTMLCanvasElement | null> {
+  let p = stitched.get(ring);
+  if (p) return p;
+  const urls = ring.imageryUrls;
+  p = !urls
+    ? Promise.resolve(null)
+    : Promise.all(
+        urls.map(
+          (u) =>
+            new Promise<HTMLImageElement>((res, rej) => {
+              const im = new Image();
+              im.onload = () => res(im);
+              im.onerror = rej;
+              im.src = u;
+            }),
+        ),
+      )
+        .then((imgs) => {
+          const n = ring.meta.tiles;
+          const c = document.createElement('canvas');
+          c.width = c.height = Math.min(4096, imgs[0].width * n);
+          const ctx = c.getContext('2d')!;
+          const ts = c.width / n;
+          imgs.forEach((im, k) => ctx.drawImage(im, (k % n) * ts, Math.floor(k / n) * ts, ts, ts));
+          return c;
+        })
+        .catch(() => null);
+  stitched.set(ring, p);
+  return p;
+}
+
 function useRingTexture(ring: LandRing) {
   const [tex, setTex] = useState<THREE.Texture | null>(null);
   useEffect(() => {
-    const urls = ring.imageryUrls;
-    if (!urls) return;
     let alive = true;
-    const n = ring.meta.tiles;
-    Promise.all(
-      urls.map(
-        (u) =>
-          new Promise<HTMLImageElement>((res, rej) => {
-            const im = new Image();
-            im.onload = () => res(im);
-            im.onerror = rej;
-            im.src = u;
-          }),
-      ),
-    )
-      .then((imgs) => {
-        if (!alive) return;
-        const tile = imgs[0].width;
-        const c = document.createElement('canvas');
-        c.width = c.height = Math.min(4096, tile * n);
-        const ctx = c.getContext('2d')!;
-        const ts = c.width / n;
-        imgs.forEach((im, k) => ctx.drawImage(im, (k % n) * ts, Math.floor(k / n) * ts, ts, ts));
-        const t = new THREE.CanvasTexture(c);
-        t.colorSpace = THREE.SRGBColorSpace;
-        t.anisotropy = 8;
-        setTex(t);
-      })
-      .catch(() => {});
+    ringImage(ring).then((c) => {
+      if (!alive || !c) return;
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = 8;
+      setTex(t);
+    });
     return () => {
       alive = false;
     };

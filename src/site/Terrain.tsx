@@ -3,7 +3,8 @@ import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Site } from '../geo/site';
 import { closestOnSegment, pointInPolygon, type P2 } from '../placement/geom2d';
-import { makeDetailTexture, makeFallbackBase, paintBase, paintOverlay, type OverlaySpec } from './groundPaint';
+import { makeDetailTexture, makeFallbackBase, matchImagery, paintBase, paintOverlay, type OverlaySpec } from './groundPaint';
+import { ringImage } from './Landscape';
 import { useStore } from '../store';
 
 export interface PlatformSpec {
@@ -136,6 +137,30 @@ export function Terrain({ site, platform, apron }: { site: Site; platform: Platf
     if (!site.orthoUrl) return;
     new THREE.TextureLoader().load(site.orthoUrl, setOrthoTex, undefined, () => setOrthoTex(null));
   }, [site.orthoUrl]);
+  // the wide-area imagery cropped to this terrain, and the close-up photo colour-matched to it
+  const [matched, setMatched] = useState<{ img: HTMLCanvasElement; under: HTMLCanvasElement | null } | null>(null);
+  useEffect(() => {
+    if (!orthoTex) return;
+    let alive = true;
+    const img = orthoTex.image as HTMLImageElement;
+    const wide = [...site.land].sort((a, b) => a.meta.size - b.meta.size)[0];
+    (wide ? ringImage(wide) : Promise.resolve(null)).then((ring) => {
+      if (!alive) return;
+      let under: HTMLCanvasElement | null = null;
+      if (ring && wide) {
+        const k = ring.width / wide.meta.size;
+        const sx = (dem.x0 - wide.x0) * k, sy = (dem.z0 - wide.z0) * k, sw = dem.sizeX * k, sh = dem.sizeZ * k;
+        under = document.createElement('canvas');
+        under.width = Math.round(sw);
+        under.height = Math.round(sh);
+        under.getContext('2d')!.drawImage(ring, sx, sy, sw, sh, 0, 0, under.width, under.height);
+      }
+      setMatched({ img: under ? matchImagery(img, under) : (img as unknown as HTMLCanvasElement), under });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [orthoTex, site.land, dem]);
   const fallback = useMemo(() => makeFallbackBase(), []);
   const detail = useMemo(() => makeDetailTexture(), []);
   const spec = useMemo(() => overlaySpec(site), [site]);
@@ -162,11 +187,11 @@ export function Terrain({ site, platform, apron }: { site: Site; platform: Platf
     return t;
   }, []);
   useEffect(() => {
-    const img = site.orthoUrl && useOrtho && orthoTex ? (orthoTex.image as CanvasImageSource) : null;
-    paintBase(baseTex.image as HTMLCanvasElement, img, fallback.image as HTMLCanvasElement, { x0: dem.x0, z0: dem.z0, sizeX: dem.sizeX, sizeZ: dem.sizeZ }, roads);
+    const on = site.orthoUrl && useOrtho && matched;
+    paintBase(baseTex.image as HTMLCanvasElement, on ? matched.img : null, fallback.image as HTMLCanvasElement, { x0: dem.x0, z0: dem.z0, sizeX: dem.sizeX, sizeZ: dem.sizeZ }, roads, on ? matched.under : null);
     baseTex.needsUpdate = true;
     invalidate();
-  }, [baseTex, orthoTex, useOrtho, site.orthoUrl, fallback, dem, roads, invalidate]);
+  }, [baseTex, matched, useOrtho, site.orthoUrl, fallback, dem, roads, invalidate]);
 
   const mat = useMemo(() => {
     const m = new THREE.MeshStandardMaterial({ roughness: 0.97, metalness: 0 });
