@@ -109,18 +109,23 @@ function SetbackOverlay() {
   const show = useStore((s) => s.layers.dims);
   if (!show) return null;
   const col = { ok: '#16a34a', warn: '#d97706', fail: '#dc2626' };
-  // show the most critical dimension per boundary-facing wall (skip far ones)
-  const walls = d.setbacks.walls.filter((w) => w.distance < 15);
+  // every exterior wall → every boundary edge it faces; the nearest one carries the WT §12 status
   return (
     <Overlay order={30}>
-      {walls.map((w) => (
-        <group key={w.wallId}>
-          <Lines points={[v3(w.from), v3(w.to)]} color={col[w.status]} width={2.5} />
-          <Label at={[(w.from[0] + w.to[0]) / 2, (w.from[1] + w.to[1]) / 2]} className={`dim-label ${w.status}`}>
-            {f(Math.max(0, w.distance), 2)} m
-          </Label>
-        </group>
-      ))}
+      {d.setbacks.walls.flatMap((w) =>
+        w.all.map((e, i) => {
+          const nearest = i === 0;
+          const mid: P2 = [(e.p[0] + e.q[0]) / 2, (e.p[1] + e.q[1]) / 2];
+          return (
+            <group key={`${w.wallId}-${e.edge}`}>
+              <Lines points={[v3(e.p), v3(e.q)]} color={nearest ? col[w.status] : '#475569'} width={nearest ? 2.5 : 1.5} dashed={!nearest} opacity={nearest ? 1 : 0.85} />
+              <Label at={mid} className={`dim-label ${nearest ? w.status : 'other'}`}>
+                {f(Math.max(0, e.d), 2)} m
+              </Label>
+            </group>
+          );
+        }),
+      )}
       {d.setbacks.buildingLine && (
         <Lines points={[v3(d.setbacks.buildingLine.from), v3(d.setbacks.buildingLine.to)]} color={d.setbacks.buildingLine.ok ? '#7c3aed' : '#dc2626'} width={2} />
       )}

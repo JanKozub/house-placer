@@ -23,6 +23,8 @@ export interface WallSetback {
   from: P2;
   to: P2;
   status: 'ok' | 'warn' | 'fail';
+  /** distance to every boundary edge this wall faces (nearest first) */
+  all: EdgeDistance[];
 }
 
 export interface SetbackResult {
@@ -46,9 +48,10 @@ export function computeSetbacks(pl: Placement, parcel: P2[], buildingLine?: P2[]
     const b = toSite(toLocal(...w.b), pl);
     const hasOpenings = house.openings.some((o) => o.wall === w.id);
     const required = hasOpenings ? LIMIT_WITH_OPENINGS : LIMIT_BLANK;
-    const r = facingDistance(a, b, fp, parcel);
+    const all = facingDistances(a, b, fp, parcel);
+    const r = all[0] ?? (() => { const x = segToPolygon(a, b, parcel); return { d: x.d, p: x.p, q: x.q }; })();
     const status: WallSetback['status'] = r.d >= required ? 'ok' : r.d >= required - 0.5 ? 'warn' : 'fail';
-    return { wallId: w.id, hasOpenings, required, distance: r.d, from: r.p, to: r.q, status };
+    return { wallId: w.id, hasOpenings, required, distance: r.d, from: r.p, to: r.q, status, all };
   });
 
   const insideParcel = fp.every((c) => pointInPolygon(c, parcel));
@@ -82,8 +85,23 @@ export function computeSetbacks(pl: Placement, parcel: P2[], buildingLine?: P2[]
   };
 }
 
-/** perpendicular distance from wall (a→b) to boundary parts lying in the strip in front of it */
-export function facingDistance(a: P2, b: P2, footprint: P2[], parcel: P2[]): { d: number; p: P2; q: P2 } {
+export interface EdgeDistance {
+  /** parcel boundary edge index */
+  edge: number;
+  d: number;
+  /** foot on the wall */
+  p: P2;
+  /** point on the boundary */
+  q: P2;
+}
+
+/**
+ * Perpendicular distances from wall (a→b) to every parcel edge that lies (at least partly) in the
+ * strip in front of the wall — one per edge, at its closest point. Measurements whose line would
+ * run through or along the house itself (e.g. from an inner-corner wall across the other wing)
+ * are skipped.
+ */
+export function facingDistances(a: P2, b: P2, footprint: P2[], parcel: P2[]): EdgeDistance[] {
   const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
   const d: P2 = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
   let n: P2 = [-d[1], d[0]];
@@ -92,8 +110,15 @@ export function facingDistance(a: P2, b: P2, footprint: P2[], parcel: P2[]): { d
 
   const along = (q: P2) => (q[0] - a[0]) * d[0] + (q[1] - a[1]) * d[1];
   const out = (q: P2) => (q[0] - a[0]) * n[0] + (q[1] - a[1]) * n[1];
+  const blocked = (p: P2, q: P2) => {
+    const p2: P2 = [p[0] + n[0] * 0.02, p[1] + n[1] * 0.02];
+    for (let k = 0; k < footprint.length; k++) {
+      if (segSegDistance(p2, q, footprint[k], footprint[(k + 1) % footprint.length]).d < 1e-6) return true;
+    }
+    return pointInPolygon([(p2[0] + q[0]) / 2, (p2[1] + q[1]) / 2], footprint);
+  };
 
-  let best = { d: Infinity, p: mid, q: mid };
+  const res: EdgeDistance[] = [];
   for (let i = 0; i < parcel.length; i++) {
     const s0 = parcel[i], s1 = parcel[(i + 1) % parcel.length];
     // Liang–Barsky clip of s0→s1 against 0 ≤ along ≤ L and out ≥ 0
@@ -114,21 +139,30 @@ export function facingDistance(a: P2, b: P2, footprint: P2[], parcel: P2[]): { d
         else t1 = Math.min(t1, t);
       }
     }
-    if (empty || t0 > t1) continue;
-    for (const t of [t0, t1]) {
+    if (empty || t0 > t1 + 1e-9) continue;
+    // distance is linear along the clipped piece: try both ends, then pull the foot away from the
+    // wall ends if the end measurement is blocked (it would run along an adjacent wall)
+    let best: EdgeDistance | null = null;
+    const cands = [t0, t1, (t0 + t1) / 2];
+    for (const t of cands) {
       const q: P2 = [s0[0] + (s1[0] - s0[0]) * t, s0[1] + (s1[1] - s0[1]) * t];
+      const s = Math.max(0, Math.min(L, along(q)));
+      const p: P2 = [a[0] + d[0] * s, a[1] + d[1] * s];
       const dd = out(q);
-      if (dd < best.d) {
-        const s = along(q);
-        best = { d: dd, p: [a[0] + d[0] * s, a[1] + d[1] * s], q };
-      }
+      if (dd < -1e-9 || blocked(p, q)) continue;
+      if (!best || dd < best.d) best = { edge: i, d: dd, p, q };
     }
+    if (best) res.push(best);
   }
-  if (!isFinite(best.d)) {
-    const r = segToPolygon(a, b, parcel);
-    return { d: r.d, p: r.p, q: r.q };
-  }
-  return best;
+  return res.sort((x, y) => x.d - y.d);
+}
+
+/** distance from wall (a→b) to the nearest boundary in front of it (WT §12 check) */
+export function facingDistance(a: P2, b: P2, footprint: P2[], parcel: P2[]): { d: number; p: P2; q: P2 } {
+  const all = facingDistances(a, b, footprint, parcel);
+  if (all.length) return all[0];
+  const r = segToPolygon(a, b, parcel);
+  return { d: r.d, p: r.p, q: r.q };
 }
 
 /** which side of a polyline a point is on (sign of cross product with nearest segment) */

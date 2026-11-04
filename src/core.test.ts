@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
 import { buildHouse, footprintLocal } from './house/geometry';
 import { house, roofTopAt } from './house/ambrozja17';
-import { polygonArea, toHouse, toSite, type P2 } from './placement/geom2d';
-import { computeSetbacks, facingDistance } from './placement/setbacks';
+import { pointInPolygon, polygonArea, toHouse, toSite, type P2 } from './placement/geom2d';
+import { computeSetbacks, facingDistance, footprintSite } from './placement/setbacks';
 import { computeEarthwork, offsetPolygon } from './placement/earthwork';
 import { makeSite } from './geo/site';
 import { sunState, warsawDate } from './site/sun';
@@ -99,6 +99,22 @@ describe('setbacks', () => {
     expect(east.distance).toBeCloseTo(3, 2);
     expect(east.status).toBe('fail');
     expect(r.ok).toBe(false);
+  });
+
+  it('measures every wall to each boundary edge it faces, never through the house', () => {
+    const r = computeSetbacks({ x: 0, z: 0, bearing: 180, mirror: false }, big);
+    const fp = footprintSite({ x: 0, z: 0, bearing: 180, mirror: false });
+    for (const w of r.walls) {
+      expect(w.all.length).toBe(1); // axis-aligned house in a square plot: one facing edge per wall
+      for (const e of w.all) {
+        const mid: P2 = [(e.p[0] + e.q[0]) / 2, (e.p[1] + e.q[1]) / 2];
+        expect(pointInPolygon(mid, fp)).toBe(false);
+      }
+    }
+    // a pentagon with an oblique edge: some walls face two boundary edges
+    const pent: P2[] = [[-30, -30], [30, -30], [30, 10], [10, 30], [-30, 30]];
+    const r2 = computeSetbacks({ x: 0, z: 0, bearing: 180, mirror: false }, pent);
+    expect(r2.walls.some((w) => w.all.length >= 2)).toBe(true);
   });
 
   it('ignores boundaries that are only diagonal from a wall end', () => {
