@@ -8,6 +8,7 @@ import { uid, useStore, type GardenKind, type Tool, type TreeKind } from '../sto
 import { house } from '../house/ambrozja17';
 import { roofOutlineLocal, toLocal } from '../house/geometry';
 import { centroid, closestOnSegment, pointInPolygon, toSite, type P2 } from '../placement/geom2d';
+import { f } from '../ui/format';
 
 const OVER = 200; // overlay height (scene units) — drawn without depth test
 const FIXED_SUN = new THREE.Vector3(-0.35, 0.85, 0.4).normalize();
@@ -92,12 +93,12 @@ function HousePlanOverlay() {
             <Label key={'r' + i} at={toS(...r.at)} className="room-label">
               {r.name}
               <br />
-              <small>{r.area.toFixed(2)} m²</small>
+              <small>{f(r.area, 2)} m²</small>
             </Label>
           ))}
         </>
       )}
-      <Label at={front} className="front-label">▼ entrance / garage</Label>
+      <Label at={front} className="front-label">▼ wejście / garaż</Label>
     </Overlay>
   );
 }
@@ -115,7 +116,7 @@ function SetbackOverlay() {
         <group key={w.wallId}>
           <Lines points={[v3(w.from), v3(w.to)]} color={col[w.status]} width={2.5} />
           <Label at={[(w.from[0] + w.to[0]) / 2, (w.from[1] + w.to[1]) / 2]} className={`dim-label ${w.status}`}>
-            {Math.max(0, w.distance).toFixed(2)} m
+            {f(Math.max(0, w.distance), 2)} m
           </Label>
         </group>
       ))}
@@ -153,7 +154,7 @@ function SiteOverlay() {
         return (
           <group key={i}>
             {(on || tool === 'fence') && <Lines points={[v3(p, OVER + 1), v3(q, OVER + 1)]} color={on ? '#374151' : '#9ca3af'} width={on ? 6 : 4} dashed={!on} />}
-            <Label at={[(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]} className="edge-label">{L.toFixed(2)} m</Label>
+            <Label at={[(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]} className="edge-label">{f(L, 2)} m</Label>
           </group>
         );
       })}
@@ -186,7 +187,7 @@ function GardenOverlay({ draft, cursor }: { draft: P2[]; cursor: P2 | null }) {
       )}
       {tool === 'measure' && draftPts.length === 2 && (
         <Label at={[(draftPts[0][0] + draftPts[1][0]) / 2, (draftPts[0][1] + draftPts[1][1]) / 2]} className="dim-label ok">
-          {Math.hypot(draftPts[1][0] - draftPts[0][0], draftPts[1][1] - draftPts[0][1]).toFixed(2)} m
+          {f(Math.hypot(draftPts[1][0] - draftPts[0][0], draftPts[1][1] - draftPts[0][1]), 2)} m
         </Label>
       )}
       {draft.map((p, i) => (
@@ -397,7 +398,7 @@ export function PlacementView() {
           <Interaction draft={draft} setDraft={setDraft} setCursor={setCursor} />
         </SiteContext.Provider>
       </Canvas>
-      <div className="compass" title="Grid north (PUWG 1992)">N ↑</div>
+      <div className="compass" title="Północ układu PUWG 1992">Pn ↑</div>
       <ToolHint tool={tool} draftLen={draft.length} />
     </div>
   );
@@ -405,16 +406,16 @@ export function PlacementView() {
 
 function ToolHint({ tool, draftLen }: { tool: Tool; draftLen: number }) {
   const hints: Partial<Record<Tool, string>> = {
-    select: 'Drag the house to move · drag the blue handle to rotate (Shift = 15° steps) · arrows nudge, Q/E rotate · drag empty ground to pan, scroll to zoom',
-    fence: 'Click a plot boundary to add/remove a fence along it (gaps are left where driveways/paths cross)',
-    buildingLine: 'Click points of the building line (MPZP / road setback) · double-click or Enter to finish',
-    measure: 'Click two points to measure',
+    select: 'Przeciągnij dom, aby go przesunąć · przeciągnij niebieski uchwyt, aby obrócić (Shift = co 15°) · strzałki przesuwają, Q/E obracają · przeciągnij teren, aby przesunąć widok, kółko myszy przybliża',
+    fence: 'Kliknij granicę działki, aby dodać lub usunąć ogrodzenie (przerwy zostają tam, gdzie przecina je podjazd lub ścieżka)',
+    buildingLine: 'Klikaj kolejne punkty linii zabudowy (z MPZP / od drogi) · dwuklik lub Enter kończy',
+    measure: 'Kliknij dwa punkty, aby zmierzyć odległość',
   };
   const area = AREA_TOOLS.includes(tool as GardenKind);
   const text = area
-    ? `Click to add corners${draftLen ? ` (${draftLen})` : ''} · click the first point, double-click or Enter to close · Backspace undo · Esc cancel`
+    ? `Klikaj, aby dodać narożniki${draftLen ? ` (${draftLen})` : ''} · kliknij pierwszy punkt, dwuklik lub Enter zamyka · Backspace cofa · Esc anuluje`
     : TREE_TOOLS.includes(tool as TreeKind)
-      ? 'Click to plant'
+      ? 'Kliknij, aby posadzić'
       : hints[tool];
   return text ? <div className="tool-hint">{text}</div> : null;
 }

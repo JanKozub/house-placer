@@ -74,16 +74,16 @@ export function PreviewView() {
       <div className="view-toolbar">
         {(['street', 'entrance', 'side', 'garden', 'aerial'] as ViewPreset[]).map((p) => (
           <button key={p} className={preset === p ? 'on' : ''} onClick={() => go(p)}>
-            {{ street: 'From road', entrance: 'Entrance', side: 'Side', garden: 'Garden', aerial: 'Aerial' }[p]}
+            {{ street: 'Od drogi', entrance: 'Wejście', side: 'Z boku', garden: 'Ogród', aerial: 'Z lotu ptaka' }[p]}
           </button>
         ))}
         <span className="sep" />
         {!photo ? (
           <button className="primary" onClick={() => { setProgress(null); setPhoto({ target: 400 }); }}>
-            Photo (path traced)
+            Zdjęcie fotorealistyczne
           </button>
         ) : (
-          <button onClick={() => setPhoto(null)}>Exit photo</button>
+          <button onClick={() => setPhoto(null)}>Zamknij zdjęcie</button>
         )}
       </div>
 
@@ -91,11 +91,11 @@ export function PreviewView() {
         <div className="photo-hud">
           {progress?.done ? (
             <>
-              <span>Done · {progress.samples} samples</span>
-              <a className="btn primary" href={progress.url} download={`ambrozja17-dz664-2-${Date.now()}.png`}>Download PNG</a>
+              <span>Gotowe · próbek: {progress.samples}</span>
+              <a className="btn primary" href={progress.url} download={`ambrozja17-dz664-2-${Date.now()}.png`}>Pobierz PNG</a>
             </>
           ) : (
-            <span>Path tracing… {progress?.samples ?? 0} / {photo.target} samples (don’t move the camera)</span>
+            <span>Renderowanie… {progress?.samples ?? 0} / {photo.target} próbek (nie ruszaj kamerą)</span>
           )}
           <div className="bar"><div style={{ width: `${Math.min(100, ((progress?.samples ?? 0) / photo.target) * 100)}%` }} /></div>
         </div>

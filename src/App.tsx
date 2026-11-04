@@ -26,19 +26,19 @@ export function App() {
       .catch((e) => setErr(String(e)));
   }, []);
 
-  if (err) return <div className="splash">Could not load site data: {err}<br />Run <code>npm run fetch-site</code>.</div>;
-  if (!site) return <div className="splash">Loading plot 664/2…</div>;
+  if (err) return <div className="splash">Nie udało się wczytać danych działki: {err}<br />Uruchom <code>npm run fetch-site</code>.</div>;
+  if (!site) return <div className="splash">Wczytywanie działki 664/2…</div>;
 
   return (
     <SiteContext.Provider value={site}>
       <div className="app">
         <header className="topbar">
           <div className="brand">
-            <strong>Ambrozja 17</strong> <span>on plot {site.meta.parcelNumber} · {site.meta.region}, gm. {site.meta.commune}</span>
+            <strong>Ambrozja 17</strong> <span>na działce nr {site.meta.parcelNumber} · {site.meta.region}, gm. {site.meta.commune}</span>
           </div>
           <nav className="tabs">
-            <button className={tab === 'preview' ? 'on' : ''} onClick={() => set({ tab: 'preview' })}>3D preview</button>
-            <button className={tab === 'placement' ? 'on' : ''} onClick={() => set({ tab: 'placement' })}>Placement</button>
+            <button className={tab === 'preview' ? 'on' : ''} onClick={() => set({ tab: 'preview' })}>Podgląd 3D</button>
+            <button className={tab === 'placement' ? 'on' : ''} onClick={() => set({ tab: 'placement' })}>Ustawienie na działce</button>
           </nav>
         </header>
         <main className="main">
