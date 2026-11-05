@@ -57,7 +57,7 @@ function CameraRig({ preset, nonce, valley }: { preset: ViewPreset; nonce: numbe
     const f = new THREE.Vector2(Math.sin(b), -Math.cos(b)); // front direction in (x,z)
     const side = new THREE.Vector2(-f.y, f.x);
     const c = new THREE.Vector2(pl.x, pl.z);
-    const ground = (p: THREE.Vector2) => carvedHeight(site, p.x, p.y, d.platform) - site.baseH;
+    const ground = (p: THREE.Vector2) => carvedHeight(site, p.x, p.y, d.platforms) - site.baseH;
     let eye: THREE.Vector2, h: number, tgtH = d.floorY + 2.2;
     switch (preset) {
       case 'street': eye = c.clone().addScaledVector(f, 26).addScaledVector(side, -9); h = 1.7; break;

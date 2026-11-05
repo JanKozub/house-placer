@@ -4,10 +4,13 @@ import { readFileSync } from 'node:fs';
 import { buildHouse, footprintLocal } from './house/geometry';
 import { ambrozja17 } from './house/ambrozja17';
 import { grela } from './house/grela';
+import { ambrozja17Detached, detachedGarage } from './house/ambrozja17-detached';
+import { defaultAnnexPlacement } from './house/annex';
+import { carvedHeight } from './site/Terrain';
 import { HOUSE_LIST } from './house/projects';
 import { polygonAreaPlan, roofFaces, roofTopAt } from './house/roof';
 import { migrateState, useStore } from './store';
-import { pointInPolygon, polygonArea, toHouse, toSite, type P2 } from './placement/geom2d';
+import { pointInPolygon, polygonArea, polygonGap, toHouse, toSite, type P2 } from './placement/geom2d';
 import { computeSetbacks, facingDistance, footprintSite, nearestCornerDistances } from './placement/setbacks';
 import { computeEarthwork, offsetPolygon } from './placement/earthwork';
 import { makeSite } from './geo/site';
@@ -15,7 +18,10 @@ import { sunState, warsawDate } from './site/sun';
 
 const T30 = Math.tan(Math.PI / 6);
 
-describe.each(HOUSE_LIST.map((h) => [h.name, h] as const))('house project %s', (_name, h) => {
+// every project and every separate building in it (detached garages)
+const ALL_BUILDINGS = HOUSE_LIST.flatMap((h) => [h, ...(h.annexes ?? []).map((a) => a.def)]);
+
+describe.each(ALL_BUILDINGS.map((h) => [h.name, h] as const))('house project %s', (_name, h) => {
   it('outline is clockwise, matches width × depth, and each wall is an outline edge', () => {
     const fp = footprintLocal(h);
     const xs = fp.map((p) => p[0]), zs = fp.map((p) => p[1]);
@@ -72,7 +78,8 @@ describe.each(HOUSE_LIST.map((h) => [h.name, h] as const))('house project %s', (
     expect(size.x).toBeLessThan(h.width + 3);
     expect(size.z).toBeGreaterThan(h.depth);
     expect(size.z).toBeLessThan(h.depth + 3);
-    expect(box.max.y).toBeGreaterThan(h.roof.ridgeTop); // chimneys above the ridge line
+    if (h.roof.chimneys.length) expect(box.max.y).toBeGreaterThan(h.roof.ridgeTop); // chimneys above the ridge line
+    else expect(box.max.y).toBeCloseTo(h.roof.ridgeTop, 2);
     expect(parts.glass).toBeTruthy();
     expect(parts.roof!.getAttribute('position').count).toBeGreaterThan(0);
   });
@@ -142,6 +149,50 @@ describe('Dom Grela (TE-DE)', () => {
     expect(h.rooms).toHaveLength(16);
     const sum = h.rooms.reduce((s, r) => s + r.area, 0);
     expect(sum).toBeCloseTo(204.7, 1);
+  });
+});
+
+describe('Ambrozja 17 with a detached garage', () => {
+  const h = ambrozja17Detached, g = detachedGarage;
+  it('house is the original without the garage wing: 16.85 × 15.65 m, straight front, no garage door or carport', () => {
+    expect([h.width, h.depth]).toEqual([16.85, 15.65]);
+    expect(polygonArea(h.outline)).toBeCloseTo(16.85 * 15.65 - 7.8 * 6.6, 6);
+    expect(h.openings.some((o) => o.kind === 'garage')).toBe(false);
+    expect(h.openings).toHaveLength(ambrozja17.openings.length - 1);
+    expect(h.porches).toHaveLength(0);
+    expect(h.rooms.some((r) => r.name.includes('Garaż'))).toBe(false);
+    // the front roof edge is level: living-wing eave and the bedroom wing's 1 m gable overhang meet
+    const eave = h.roof.topAtWall - h.roof.eaveOverhang * T30;
+    for (const X of [-0.5, 3, 6.8]) expect(roofTopAt(h, X, 15.65 + 1.0)).toBeCloseTo(eave, 6);
+    expect(h.roof.ridgeTop).toBeCloseTo(ambrozja17.roof.ridgeTop, 6);
+  });
+
+  it('garage is the original room 1/17 standing alone, lower than the house', () => {
+    expect([g.width, g.depth]).toEqual([6.45, 7.9]);
+    expect((g.width - 2 * g.wallThickness) * (g.depth - 2 * g.wallThickness)).toBeCloseTo(38.85, 2);
+    expect(g.openings.find((o) => o.kind === 'garage')).toMatchObject({ width: 4.5, height: 2.25 });
+    // on the same ground the garage ridge stays below the house ridge, and the eaves line up
+    expect(g.roof.ridgeTop + g.plinth).toBeLessThan(h.roof.ridgeTop + h.plinth);
+    expect(g.roof.topAtWall + g.plinth).toBeCloseTo(h.roof.topAtWall + h.plinth, 6);
+    expect(h.annexes?.[0].def).toBe(g);
+  });
+
+  it('starts 3 m in front of the house, wherever the house stands', () => {
+    for (const bearing of [0, 137, 222]) {
+      const pl = { x: 5, z: -3, bearing, mirror: false };
+      const gp = defaultAnnexPlacement(h, h.annexes![0], pl);
+      expect(gp.bearing).toBe(bearing);
+      const gap = polygonGap(footprintSite(h, pl), footprintSite(g, gp));
+      expect(gap.overlap).toBe(false);
+      expect(gap.d).toBeCloseTo(3, 1);
+    }
+  });
+
+  it('measures the gap between two buildings and flags overlap', () => {
+    const a: P2[] = [[0, 0], [10, 0], [10, 8], [0, 8]];
+    const b: P2[] = [[13, 2], [18, 2], [18, 6], [13, 6]];
+    expect(polygonGap(a, b)).toMatchObject({ d: 3, overlap: false });
+    expect(polygonGap(a, b.map(([x, z]) => [x - 5, z] as P2)).overlap).toBe(true);
   });
 });
 
@@ -290,6 +341,20 @@ describe('site data (public/site)', () => {
     expect(site.dem.heightAt(...site.parcel[0])).toBeCloseTo(355.4, 0);
   });
 
+  it('carves a platform for every building (house + detached garage)', () => {
+    const sq = (x: number, z: number, r: number): P2[] => [[x - r, z - r], [x + r, z - r], [x + r, z + r], [x - r, z + r]];
+    const house = { polygon: sq(0, 0, 8), h: 350 }, garage = { polygon: sq(25, 0, 4), h: 360 };
+    expect(carvedHeight(site, 0, 0, [house, garage])).toBe(350);
+    expect(carvedHeight(site, 25, 0, [house, garage])).toBe(360);
+    // far from both platforms the terrain is untouched
+    expect(carvedHeight(site, -60, 40, [house, garage])).toBeCloseTo(site.dem.heightAt(-60, 40), 6);
+    // just outside the garage: on its embankment, between its platform and the terrain
+    const t = site.dem.heightAt(29.5, 0);
+    const e = carvedHeight(site, 29.5, 0, [house, garage]);
+    expect(e).toBeGreaterThan(Math.min(t, 360) - 1e-6);
+    expect(e).toBeLessThan(Math.max(t, 360) + 1e-6);
+  });
+
   it('noon sun is due south and high in June', () => {
     const s = sunState({ month: 6, day: 21, minutes: 12 * 60 + 47 }, meta.origin.lat, meta.origin.lon, site.trueNorth);
     expect(s.altitude * 180 / Math.PI).toBeGreaterThan(62);
@@ -321,6 +386,24 @@ describe('project switching', () => {
     expect(st.trees).toHaveLength(1);
     st.setProject('grela-bilgoraj');
     expect(useStore.getState().placement.x).toBe(5);
+  });
+
+  it('keeps the detached garage where it was when switching projects', () => {
+    const s = useStore.getState();
+    s.set({ projectId: 'ambrozja17-detached', projectState: {}, placement: { x: 0, z: 0, bearing: 222, mirror: false }, floorLevel: null, annexes: {}, target: 'main' });
+    useStore.getState().set({ annexes: { garage: { placement: { x: 20, z: 5, bearing: 267, mirror: false }, floorLevel: 357.1 } }, target: 'garage' });
+    useStore.getState().setProject('ambrozja17');
+    expect(useStore.getState().annexes).toEqual({});
+    expect(useStore.getState().target).toBe('main');
+    useStore.getState().setProject('ambrozja17-detached');
+    expect(useStore.getState().annexes.garage).toEqual({ placement: { x: 20, z: 5, bearing: 267, mirror: false }, floorLevel: 357.1 });
+  });
+
+  it('migrates v2 storage (no separate buildings)', () => {
+    const out = migrateState({ projectId: 'grela-bilgoraj', projectState: {}, placement: { x: 1, z: 1, bearing: 0, mirror: false } }, 2) as { annexes: object; target: string; projectId: string };
+    expect(out.annexes).toEqual({});
+    expect(out.target).toBe('main');
+    expect(out.projectId).toBe('grela-bilgoraj');
   });
 
   it('migrates v1 storage (single house) to Ambrozja 17', () => {

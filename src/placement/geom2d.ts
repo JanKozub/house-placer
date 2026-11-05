@@ -107,3 +107,14 @@ export function polylineLength(pts: P2[]) {
   for (let i = 1; i < pts.length; i++) L += dist(pts[i - 1], pts[i]);
   return L;
 }
+
+/** shortest distance between two polygons (house ↔ detached garage); overlap = they touch or intersect */
+export function polygonGap(a: P2[], b: P2[]): { d: number; p: P2; q: P2; overlap: boolean } {
+  let best = { d: Infinity, p: a[0], q: b[0] };
+  for (let i = 0; i < a.length; i++) {
+    const r = segToPolygon(a[i], a[(i + 1) % a.length], b);
+    if (r.d < best.d) best = { d: r.d, p: r.p, q: r.q };
+  }
+  const inside = a.some((p) => pointInPolygon(p, b)) || b.some((p) => pointInPolygon(p, a));
+  return { ...best, d: inside ? 0 : best.d, overlap: inside || best.d < 1e-6 };
+}

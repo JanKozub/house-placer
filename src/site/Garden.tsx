@@ -89,7 +89,7 @@ const leafMats: Record<TreeKind, THREE.MeshStandardMaterial> = {
   shrub: new THREE.MeshStandardMaterial({ color: '#557f35', roughness: 0.9, flatShading: true }),
 };
 
-export function Trees({ site, platform }: { site: Site; platform: PlatformSpec | null }) {
+export function Trees({ site, platform }: { site: Site; platform: PlatformSpec | PlatformSpec[] | null }) {
   const trees = useStore((s) => s.trees);
   const geoms = useMemo(() => new Map(trees.map((t) => [t.id + t.kind + t.height, treeGeometry(t)])), [trees]);
   return (
@@ -111,7 +111,7 @@ export function Trees({ site, platform }: { site: Site; platform: PlatformSpec |
 const postMat = new THREE.MeshStandardMaterial({ color: '#c9c5bd', roughness: 0.9 });
 const panelMat = new THREE.MeshStandardMaterial({ color: '#3b3e42', roughness: 0.5, metalness: 0.4 });
 
-export function Fence({ site, platform }: { site: Site; platform: PlatformSpec | null }) {
+export function Fence({ site, platform }: { site: Site; platform: PlatformSpec | PlatformSpec[] | null }) {
   const edges = useStore((s) => s.fenceEdges);
   const H = useStore((s) => s.fenceHeight);
   const garden = useStore((s) => s.garden);

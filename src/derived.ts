@@ -4,9 +4,10 @@ import { useStore } from './store';
 import { useHouse } from './house/projects';
 import type { HouseDef } from './house/types';
 import { toLocal } from './house/geometry';
-import { toSite, type P2, type Placement } from './placement/geom2d';
+import { polygonGap, toSite, type P2, type Placement } from './placement/geom2d';
+import { annexState } from './house/annex';
 import { computeEarthwork, offsetPolygon } from './placement/earthwork';
-import { computeSetbacks, footprintSite, nearestCornerDistances } from './placement/setbacks';
+import { computeSetbacks, footprintSite, nearestCornerDistances, type CornerDistance } from './placement/setbacks';
 import { sunState } from './site/sun';
 import type { PlatformSpec } from './site/Terrain';
 
@@ -31,29 +32,53 @@ export function autoFloorLevel(site: Site, house: HouseDef, pl: Placement) {
   return Math.round((ew.terrainMean + house.plinth) * 100) / 100;
 }
 
+/** platform, setbacks, corners and earthwork of one building at its placement */
+function buildingGeo(site: Site, house: HouseDef, placement: Placement, floorLevelSetting: number | null, buildingLine: P2[] | null, patios: P2[][]) {
+  const autoFloor = autoFloorLevel(site, house, placement);
+  const floorH = floorLevelSetting ?? autoFloor;
+  const platformH = floorH - house.plinth;
+  const platformPoly = platformPolygon(house, placement);
+  const platform: PlatformSpec = { polygon: platformPoly, h: platformH };
+  const fp = footprintSite(house, placement);
+  const apron = offsetPolygon(fp, 0.5);
+  const earthwork = computeEarthwork(platformPoly, platformH, (x, z) => site.dem.heightAt(x, z), 0.5);
+  const setbacks = computeSetbacks(house, placement, site.parcel, buildingLine);
+  const corners: CornerDistance[] = nearestCornerDistances(house, placement, site.parcel, patios);
+  return { autoFloor, floorH, platformH, platform, footprint: fp, apron, earthwork, setbacks, corners, floorY: floorH - site.baseH };
+}
+
+export type BuildingGeo = ReturnType<typeof buildingGeo>;
+
 /** computes everything derived from the store once; provided via <DerivedProvider> */
 function useComputeDerived() {
   const site = useSite();
   const house = useHouse();
   const placement = useStore((s) => s.placement);
   const floorLevelSetting = useStore((s) => s.floorLevel);
+  const annexStore = useStore((s) => s.annexes);
   const buildingLine = useStore((s) => s.buildingLine);
   const sun = useStore((s) => s.sun);
   const garden = useStore((s) => s.garden);
 
+  const patios = useMemo(() => garden.filter((g) => g.kind === 'patio').map((g) => g.points), [garden]);
+  const main = useMemo(() => buildingGeo(site, house, placement, floorLevelSetting, buildingLine, patios), [site, house, placement, floorLevelSetting, buildingLine, patios]);
+  // separate buildings (detached garage): own placement, platform and floor level; corners G1, G2…
+  const annexes = useMemo(
+    () =>
+      (house.annexes ?? []).map((a) => {
+        const st = annexState(house, a, placement, annexStore);
+        const g = buildingGeo(site, a.def, st.placement, st.floorLevel, buildingLine, []);
+        const prefix = a.label.charAt(0).toUpperCase();
+        return { ...g, corners: g.corners.map((c) => ({ ...c, label: `${prefix}${c.corner + 1}` })), id: a.id, label: a.label, def: a.def, placement: st.placement, floorLevel: st.floorLevel };
+      }),
+    [site, house, placement, annexStore, buildingLine],
+  );
   const geo = useMemo(() => {
-    const autoFloor = autoFloorLevel(site, house, placement);
-    const floorH = floorLevelSetting ?? autoFloor;
-    const platformH = floorH - house.plinth;
-    const platformPoly = platformPolygon(house, placement);
-    const platform: PlatformSpec = { polygon: platformPoly, h: platformH };
-    const fp = footprintSite(house, placement);
-    const apron = offsetPolygon(fp, 0.5);
-    const earthwork = computeEarthwork(platformPoly, platformH, (x, z) => site.dem.heightAt(x, z), 0.5);
-    const setbacks = computeSetbacks(house, placement, site.parcel, buildingLine);
-    const corners = nearestCornerDistances(house, placement, site.parcel, garden.filter((g) => g.kind === 'patio').map((g) => g.points));
-    return { autoFloor, floorH, platformH, platform, footprint: fp, apron, earthwork, setbacks, corners, floorY: floorH - site.baseH };
-  }, [site, house, placement, floorLevelSetting, buildingLine, garden]);
+    const platforms = [main.platform, ...annexes.map((a) => a.platform)];
+    // house ↔ first separate building
+    const gap = annexes.length ? { ...polygonGap(main.footprint, annexes[0].footprint), label: annexes[0].label } : null;
+    return { ...main, annexes, platforms, gap };
+  }, [main, annexes]);
   // the sun doesn't depend on the house: don't recompute it on every drag
   const sunS = useMemo(() => sunState(sun, site.meta.origin.lat, site.meta.origin.lon, site.trueNorth), [sun, site]);
   return useMemo(() => ({ ...geo, house, sun: sunS }), [geo, house, sunS]);

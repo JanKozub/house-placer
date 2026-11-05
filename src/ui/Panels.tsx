@@ -1,8 +1,10 @@
 import { useDeferredValue, useRef } from 'react';
-import { useDerived, useSite, autoFloorLevel } from '../derived';
+import { useDerived, useSite } from '../derived';
 import { DEFAULT_PALETTE, PERSIST_KEYS, useStore, type DimsMode, type Palette, type Tool } from '../store';
 import { roofTopAt } from '../house/roof';
 import { HOUSES } from '../house/projects';
+import { setBuildingFloor, setBuildingPlacement, useTarget } from '../house/annex';
+import type { Placement } from '../placement/geom2d';
 import { cornerLabel } from '../placement/setbacks';
 import { sunTimes } from '../site/sun';
 import { carvedHeight } from '../site/Terrain';
@@ -107,6 +109,12 @@ export function PreviewPanel() {
           {house.name} ({house.code}) · {f(house.width)} × {f(house.depth)} m · pow. zabudowy {f(house.footprintArea)} m² · pow. użytkowa {f(house.usableArea)} m² · dach {house.pitchDeg}° · wys. kalenicy {f(house.heightTotal)} m
         </p>
         <p className="hint">±0,00 = {f(d.floorH)} m n.p.m. · front skierowany na azymut {f(useStore.getState().placement.bearing, 0)}°</p>
+        {d.annexes.map((a) => (
+          <p key={a.id} className="hint">
+            {a.label} (osobny budynek): {f(a.def.width)} × {f(a.def.depth)} m · pow. {f(a.def.usableArea)} m² · wys. kalenicy {f(a.def.heightTotal)} m · posadzka {f(a.floorH)} m n.p.m.
+            {d.gap && <> · {d.gap.overlap ? 'nachodzi na dom' : `${f(d.gap.d, 2)} m od domu`}</>}
+          </p>
+        ))}
       </Section>
     </div>
   );
@@ -116,9 +124,15 @@ export function PlacementPanel() {
   const site = useSite();
   const d = useDeferredValue(useDerived());
   const house = d.house;
-  const pl = useDeferredValue(useStore((s) => s.placement));
-  const setPlacement = useStore((s) => s.setPlacement);
-  const floorLevel = useStore((s) => s.floorLevel);
+  // the building the controls act on: the house, or a separate building (detached garage)
+  const t = useTarget();
+  const pl = useDeferredValue(t.placement);
+  const setPlacement = (p: Partial<Placement>) => setBuildingPlacement(house, t.id, p);
+  const floorLevel = t.floorLevel;
+  const setFloor = (v: number | null) => setBuildingFloor(house, t.id, v);
+  const tg = (t.id === 'main' ? null : d.annexes.find((a) => a.id === t.id)) ?? d;
+  const several = d.annexes.length > 0;
+  const target = useStore((s) => s.target);
   const tool = useStore((s) => s.tool);
   const layers = useStore((s) => s.layers);
   const setLayers = useStore((s) => s.setLayers);
@@ -130,8 +144,14 @@ export function PlacementPanel() {
   const set = useStore((s) => s.set);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const ew = d.earthwork;
+  const ew = tg.earthwork;
   const sb = d.setbacks;
+  const allOk = sb.ok && d.annexes.every((a) => a.setbacks.ok) && !d.gap?.overlap;
+  const allInside = sb.insideParcel && d.annexes.every((a) => a.setbacks.insideParcel);
+  const wallRows = [
+    ...sb.walls.map((w) => ({ ...w, key: w.wallId, label: house.walls.find((ww) => ww.id === w.wallId)?.label ?? w.wallId })),
+    ...d.annexes.flatMap((a) => a.setbacks.walls.map((w) => ({ ...w, key: `${a.id}-${w.wallId}`, label: a.def.walls.find((ww) => ww.id === w.wallId)?.label ?? w.wallId }))),
+  ];
   const tools: [Tool, string][] = [
     ['select', 'Przesuń dom'], ['driveway', 'Podjazd'], ['path', 'Ścieżka'], ['patio', 'Patio'], ['flowerbed', 'Rabata'], ['gravel', 'Żwir'],
     ['deciduous', 'Drzewo'], ['birch', 'Brzoza'], ['conifer', 'Iglak'], ['shrub', 'Krzew'], ['fence', 'Ogrodzenie'], ['buildingLine', 'Linia zabudowy'], ['measure', 'Pomiar'],
@@ -145,7 +165,7 @@ export function PlacementPanel() {
   const exportJson = () => {
     const s = useStore.getState() as unknown as Record<string, unknown>;
     const data = Object.fromEntries(PERSIST_KEYS.map((k) => [k, s[k]]));
-    const blob = new Blob([JSON.stringify({ app: 'house-placer', version: 2, parcel: site.meta.parcelId, ...data }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ app: 'house-placer', version: 3, parcel: site.meta.parcelId, ...data }, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `${house.id}-dz${site.meta.parcelNumber.replace('/', '-')}.json`;
@@ -156,12 +176,22 @@ export function PlacementPanel() {
     const patch = Object.fromEntries(PERSIST_KEYS.filter((k) => k in j).map((k) => [k, j[k]]));
     // v1 files had a single house (Ambrozja 17); its placement belongs to that project
     const projectId = j.projectId ?? 'ambrozja17';
-    set({ ...patch, projectId: HOUSES[projectId] ? projectId : useStore.getState().projectId, projectState: j.projectState ?? useStore.getState().projectState });
+    set({ ...patch, annexes: j.annexes ?? {}, target: 'main', projectId: HOUSES[projectId] ? projectId : useStore.getState().projectId, projectState: j.projectState ?? useStore.getState().projectState });
   };
 
   return (
     <div className="panel">
-      <Section title="Położenie" right={<span className={`badge ${sb.ok ? 'ok' : 'fail'}`}>{sb.ok ? 'Odległości OK' : sb.insideParcel ? 'Sprawdź odległości' : 'Poza działką'}</span>}>
+      <Section title="Położenie" right={<span className={`badge ${allOk ? 'ok' : 'fail'}`}>{allOk ? 'Odległości OK' : !allInside ? 'Poza działką' : d.gap?.overlap ? 'Budynki nachodzą' : 'Sprawdź odległości'}</span>}>
+        {several && (
+          <div className="row">
+            <span className="grow">Przesuwany budynek</span>
+            <div className="seg">
+              {[{ id: 'main', label: 'Dom' }, ...d.annexes.map((a) => ({ id: a.id, label: a.label }))].map((b) => (
+                <button key={b.id} className={target === b.id ? 'on' : ''} onClick={() => set({ target: b.id })}>{b.label}</button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="grid3">
           <label>Wschód (m)<input type="number" step={0.1} value={pl.x.toFixed(2)} onChange={(e) => setPlacement({ x: +e.target.value })} /></label>
           <label>Południe (m)<input type="number" step={0.1} value={pl.z.toFixed(2)} onChange={(e) => setPlacement({ z: +e.target.value })} /></label>
@@ -182,12 +212,12 @@ export function PlacementPanel() {
       <Section title="Odległości od granic (WT §12)">
         <table className="setbacks">
           <tbody>
-            {sb.walls
+            {wallRows
               .filter((w) => w.distance < 30)
               .sort((a, b) => a.distance - a.required - (b.distance - b.required))
               .map((w) => (
-                <tr key={w.wallId} className={w.status}>
-                  <td>{house.walls.find((ww) => ww.id === w.wallId)?.label ?? w.wallId}</td>
+                <tr key={w.key} className={w.status}>
+                  <td>{w.label}</td>
                   <td>{w.hasOpenings ? 'z oknami' : 'bez okien'}</td>
                   <td className="num">{f(Math.max(0, w.distance), 2)} m</td>
                   <td className="num">≥ {w.required} m</td>
@@ -199,29 +229,36 @@ export function PlacementPanel() {
           Najbliższy punkt domu od granicy: {f(sb.minDistance)} m. Odległości mierzone są do granicy na wprost każdej ściany. Linie zabudowy sprawdź w MPZP / decyzji WZ i narysuj narzędziem <em>Linia zabudowy</em>.
           {sb.buildingLine && <> Linia zabudowy: {sb.buildingLine.ok ? 'zachowana' : 'PRZEKROCZONA'} ({f(sb.buildingLine.distance)} m).</>}
         </p>
+        {d.gap && (
+          <p className={`hint ${d.gap.overlap ? 'warn' : ''}`}>
+            Odstęp dom–{d.gap.label.toLowerCase()}: <b>{d.gap.overlap ? 'budynki nachodzą na siebie' : `${f(d.gap.d, 2)} m`}</b> (najbliższe ściany). Granice działki dotyczą też garażu; sprawdź, czy MPZP / WZ pozwala na budynek gospodarczy bliżej granicy.
+          </p>
+        )}
       </Section>
 
-      <Section title="Narożniki domu i tarasu → najbliższa granica">
+      <Section title={several ? 'Narożniki budynków i tarasu → najbliższa granica' : 'Narożniki domu i tarasu → najbliższa granica'}>
         <CornerTable />
-        <p className="hint">Odległość od każdego narożnika domu (A–{cornerLabel(house.outline.length - 1)}), narożnika tarasu (T) i narysowanych patio (P…) do najbliższej krawędzi działki{house.twoEdgeCorners.length > 0 && <> (dla {house.twoEdgeCorners.map(cornerLabel).join(' i ')} do dwóch najbliższych)</>} (numery 1–{site.parcel.length} przy krawędziach). Pomiary przechodzące przez dom są pomijane. Czerwone &lt; 3 m, pomarańczowe &lt; 4 m.</p>
+        <p className="hint">Odległość od każdego narożnika domu (A–{cornerLabel(house.outline.length - 1)}), narożnika tarasu (T){d.annexes.map((a) => <span key={a.id}>, narożników budynku „{a.label}” ({a.label.charAt(0).toUpperCase()}1–{a.label.charAt(0).toUpperCase()}{a.def.outline.length})</span>)} i narysowanych patio (P…) do najbliższej krawędzi działki{house.twoEdgeCorners.length > 0 && <> (dla {house.twoEdgeCorners.map(cornerLabel).join(' i ')} do dwóch najbliższych)</>} (numery 1–{site.parcel.length} przy krawędziach). Pomiary przechodzące przez dom są pomijane. Czerwone &lt; 3 m, pomarańczowe &lt; 4 m.</p>
       </Section>
 
-      <Section title="Poziom posadzki i roboty ziemne">
+      <Section title={several ? `Poziom posadzki i roboty ziemne · ${t.id === 'main' ? 'dom' : t.annex!.label.toLowerCase()}` : 'Poziom posadzki i roboty ziemne'}>
         <div className="row">
           <label className="grow">±0,00 (m n.p.m.)
-            <input type="number" step={0.05} value={d.floorH.toFixed(2)} onChange={(e) => set({ floorLevel: +e.target.value })} />
+            <input type="number" step={0.05} value={tg.floorH.toFixed(2)} onChange={(e) => setFloor(+e.target.value)} />
           </label>
-          <button className={floorLevel === null ? 'on' : ''} onClick={() => set({ floorLevel: null })}>Auto (bilans mas)</button>
-          <button onClick={() => set({ floorLevel: Math.round((ew.terrainMax + 0.3) * 100) / 100 })}>Najwyższy + 0,30</button>
+          <button className={floorLevel === null ? 'on' : ''} onClick={() => setFloor(null)}>Auto (bilans mas)</button>
+          <button onClick={() => setFloor(Math.round((ew.terrainMax + 0.3) * 100) / 100)}>Najwyższy + 0,30</button>
         </div>
-        <input type="range" min={(ew.terrainMin - 1).toFixed(2)} max={(ew.terrainMax + 1.5).toFixed(2)} step={0.05} value={d.floorH} onChange={(e) => set({ floorLevel: +e.target.value })} />
+        <input type="range" min={(ew.terrainMin - 1).toFixed(2)} max={(ew.terrainMax + 1.5).toFixed(2)} step={0.05} value={tg.floorH} onChange={(e) => setFloor(+e.target.value)} />
         <div className="stats">
-          <div><b>{f((ew.terrainMax - ew.terrainMin), 2)} m</b><span>spadek pod domem</span></div>
+          <div><b>{f((ew.terrainMax - ew.terrainMin), 2)} m</b><span>spadek pod {t.id === 'main' ? 'domem' : 'garażem'}</span></div>
           <div><b>{f(ew.cut, 0)} m³</b><span>wykop</span></div>
           <div><b>{f(ew.fill, 0)} m³</b><span>nasyp</span></div>
-          <div><b>{f((d.floorH - ew.terrainMin), 2)} m</b><span>posadzka nad najniższym pkt</span></div>
+          <div><b>{f((tg.floorH - ew.terrainMin), 2)} m</b><span>posadzka nad najniższym pkt</span></div>
         </div>
-        <p className="hint">Teren {f(ew.terrainMin)}–{f(ew.terrainMax)} m n.p.m. (GUGiK NMT 1 m). Poziom auto ±0,00 = {f(autoFloorLevel(site, house, pl))}. Platforma na ±0,00 − {f(house.plinth)} m, skarpy 1:2. Roboty ziemne liczone tylko dla platformy (bez wykopów pod fundamenty).</p>
+        <p className="hint">Teren {f(ew.terrainMin)}–{f(ew.terrainMax)} m n.p.m. (GUGiK NMT 1 m). Poziom auto ±0,00 = {f(tg.autoFloor)}. Platforma na ±0,00 − {f(t.def.plinth)} m, skarpy 1:2. Roboty ziemne liczone tylko dla platformy (bez wykopów pod fundamenty).
+          {several && <> Razem dom i {d.annexes.map((a) => a.label.toLowerCase()).join(', ')}: wykop {f(d.earthwork.cut + d.annexes.reduce((s2, a) => s2 + a.earthwork.cut, 0), 0)} m³, nasyp {f(d.earthwork.fill + d.annexes.reduce((s2, a) => s2 + a.earthwork.fill, 0), 0)} m³.</>}
+        </p>
         <Profile />
       </Section>
 
@@ -305,7 +342,7 @@ function Profile() {
     const s = -half + (2 * half * i) / (samples - 1); // along local z (front +)
     const p = toSite([0, s], pl);
     const t0 = site.dem.heightAt(p[0], p[1]);
-    const t1 = carvedHeight(site, p[0], p[1], d.platform);
+    const t1 = carvedHeight(site, p[0], p[1], d.platforms);
     const Y = s + house.depth / 2;
     let roof: number | null = null;
     for (let X = -1.5; X <= house.width + 1.5; X += 0.25) {
@@ -345,7 +382,7 @@ function CornerTable() {
         <tr><th>Narożnik</th><th>Najbliższa krawędź</th><th>Odległość</th></tr>
       </thead>
       <tbody>
-        {d.corners.map((c) => (
+        {[...d.corners, ...d.annexes.flatMap((a) => a.corners)].map((c) => (
           <tr key={`${c.label}-${c.edge}`}>
             <th>{c.label}</th>
             <td>{c.edge + 1}</td>

@@ -240,3 +240,6 @@ export const ambrozja17: HouseDef = {
     bedroom: { at: [15.3, 7.15], h: 1.6, look: [1, 0], label: 'Z pokoju' },
   },
 };
+
+/** plan dimensions and levels, shared with the detached-garage variant (ambrozja17-detached.ts) */
+export const AMB = { PITCH_DEG, T, MAIN_X0, MAIN_X1, LIV_Y0, LIV_Y1, GAR_X0, RIDGE_X, HEAD, RIDGE_TOP, TOP_AT_WALL, EAVE_O, GABLE_O, SOFFIT } as const;

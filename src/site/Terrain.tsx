@@ -22,18 +22,28 @@ function distToPolygon(p: P2, poly: P2[]) {
   return d;
 }
 
-/** terrain height after the building platform is carved in (m a.s.l.) */
-export function carvedHeight(site: Site, x: number, z: number, platform: PlatformSpec | null) {
+/**
+ * terrain height after the building platform(s) are carved in (m a.s.l.). With several buildings
+ * (house + detached garage) a point on a platform takes that platform's height; otherwise the
+ * embankment of the nearest platform that reaches it.
+ */
+export function carvedHeight(site: Site, x: number, z: number, platforms: PlatformSpec | PlatformSpec[] | null) {
   const h = site.dem.heightAt(x, z);
-  if (!platform) return h;
+  if (!platforms) return h;
+  const list = Array.isArray(platforms) ? platforms : [platforms];
   const p: P2 = [x, z];
-  if (pointInPolygon(p, platform.polygon)) return platform.h;
-  const d = distToPolygon(p, platform.polygon);
-  const delta = h - platform.h;
-  const w = THREE.MathUtils.clamp(Math.abs(delta) * 2, 0.3, 10); // 1:2 embankment
-  if (d >= w) return h;
-  const t = d / w;
-  return platform.h + delta * (t * t * (3 - 2 * t));
+  for (const pl of list) if (pointInPolygon(p, pl.polygon)) return pl.h;
+  let best = h, bestD = Infinity;
+  for (const pl of list) {
+    const d = distToPolygon(p, pl.polygon);
+    const delta = h - pl.h;
+    const w = THREE.MathUtils.clamp(Math.abs(delta) * 2, 0.3, 10); // 1:2 embankment
+    if (d >= w || d >= bestD) continue;
+    const t = d / w;
+    best = pl.h + delta * (t * t * (3 - 2 * t));
+    bestD = d;
+  }
+  return best;
 }
 
 export function overlaySpec(site: Site): OverlaySpec {
@@ -44,7 +54,7 @@ export function overlaySpec(site: Site): OverlaySpec {
   return { x0: cx - size / 2, z0: cz - size / 2, size, px: 4096 };
 }
 
-export function Terrain({ site, platform, apron }: { site: Site; platform: PlatformSpec | null; apron: P2[] | null }) {
+export function Terrain({ site, platforms }: { site: Site; platforms: PlatformSpec[] }) {
   const garden = useStore((s) => s.garden);
   const lawn = useStore((s) => s.layers.parcelLawn);
   const useOrtho = useStore((s) => s.layers.ortho);
@@ -91,11 +101,12 @@ export function Terrain({ site, platform, apron }: { site: Site; platform: Platf
     carvedRef.current = [];
     // region whose normals must be recomputed: last carve ∪ this carve
     let box = dirtyRef.current;
-    if (platform) {
+    if (platforms.length) {
       let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-      for (const [x, z] of platform.polygon) {
-        minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
-      }
+      for (const pl of platforms)
+        for (const [x, z] of pl.polygon) {
+          minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+        }
       const m = 11;
       const i0 = Math.max(0, Math.floor((minX - m - dem.x0) / dem.res)), i1 = Math.min(W - 1, Math.ceil((maxX + m - dem.x0) / dem.res));
       const j0 = Math.max(0, Math.floor((minZ - m - dem.z0) / dem.res)), j1 = Math.min(dem.height - 1, Math.ceil((maxZ + m - dem.z0) / dem.res));
@@ -103,10 +114,10 @@ export function Terrain({ site, platform, apron }: { site: Site; platform: Platf
         for (let i = i0; i <= i1; i++) {
           const k = j * W + i;
           const x = pos.getX(k), z = pos.getZ(k);
-          const h = carvedHeight(site, x, z, platform);
+          const h = carvedHeight(site, x, z, platforms);
           if (Math.abs(h - dem.data[k]) > 1e-4) {
             // keep the mesh slightly under the platform so slabs never z-fight
-            pos.setY(k, h - site.baseH - (pointInPolygon([x, z], platform.polygon) ? 0.03 : 0));
+            pos.setY(k, h - site.baseH - (platforms.some((pl) => pointInPolygon([x, z], pl.polygon)) ? 0.03 : 0));
             carvedRef.current.push(k);
           }
         }
@@ -129,7 +140,7 @@ export function Terrain({ site, platform, apron }: { site: Site; platform: Platf
       nrm.needsUpdate = true;
     }
     invalidate();
-  }, [geom, platform, dem, site, invalidate]);
+  }, [geom, platforms, dem, site, invalidate]);
 
   // textures
   const [orthoTex, setOrthoTex] = useState<THREE.Texture | null>(null);

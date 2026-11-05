@@ -7,8 +7,10 @@ import { create } from 'zustand';
 import { useDerived, useSite } from '../derived';
 import { uid, useStore, type GardenKind, type Tool, type TreeKind } from '../store';
 import { houseById, useHouse } from '../house/projects';
+import { buildingPlacement, setBuildingPlacement, useTarget } from '../house/annex';
+import type { HouseDef } from '../house/types';
 import { toLocal } from '../house/geometry';
-import { centroid, closestOnSegment, pointInPolygon, toSite, type P2 } from '../placement/geom2d';
+import { centroid, closestOnSegment, pointInPolygon, toSite, type P2, type Placement } from '../placement/geom2d';
 import { f } from '../ui/format';
 import { Attribution } from '../ui/Attribution';
 import { cornerLabel } from '../placement/setbacks';
@@ -56,13 +58,10 @@ function Lines({ points, color, width = 2, dashed = false, opacity = 1 }: { poin
   );
 }
 
-function HousePlanOverlay() {
-  const pl = useStore((s) => s.placement);
+/** one building's plan: outline, openings, partitions, room names */
+function BuildingPlan({ house, pl, fp, selected, frontLabel }: { house: HouseDef; pl: Placement; fp: P2[]; selected: boolean; frontLabel: string }) {
   const showPlan = useStore((s) => s.layers.plan);
-  const d = useDerived();
-  const house = useHouse();
   const toS = (X: number, Y: number) => toSite(toLocal(house, X, Y), pl);
-  const fp = d.footprint;
   const fillGeom = useMemo(() => {
     const s = new THREE.Shape(fp.map(([x, z]) => new THREE.Vector2(x, z)));
     const g = new THREE.ShapeGeometry(s);
@@ -72,13 +71,13 @@ function HousePlanOverlay() {
   }, [fp]);
   const front = toS(house.width / 2, house.depth + 0.5);
   return (
-    <Overlay>
+    <>
       {showPlan && (
         <mesh geometry={fillGeom} renderOrder={15}>
           <meshBasicMaterial color="#ffffff" transparent opacity={0.82} depthTest={false} side={THREE.DoubleSide} />
         </mesh>
       )}
-      <Lines points={ring(fp)} color="#1f2a37" width={3} />
+      <Lines points={ring(fp)} color={selected ? '#2563eb' : '#1f2a37'} width={selected ? 4 : 3} />
       {showPlan && (
         <>
           {house.partitions.map(([x1, y1, x2, y2], i) => (
@@ -100,7 +99,39 @@ function HousePlanOverlay() {
           ))}
         </>
       )}
-      <Label at={front} className="front-label">▼ wejście / garaż</Label>
+      <Label at={front} className="front-label">{frontLabel}</Label>
+    </>
+  );
+}
+
+function HousePlanOverlay() {
+  const pl = useStore((s) => s.placement);
+  const target = useStore((s) => s.target);
+  const d = useDerived();
+  const several = d.annexes.length > 0;
+  return (
+    <Overlay>
+      <BuildingPlan house={d.house} pl={pl} fp={d.footprint} selected={several && target === 'main'} frontLabel={several ? '▼ wejście' : '▼ wejście / garaż'} />
+      {d.annexes.map((a) => (
+        <BuildingPlan key={a.id} house={a.def} pl={a.placement} fp={a.footprint} selected={target === a.id} frontLabel="▼ brama" />
+      ))}
+    </Overlay>
+  );
+}
+
+/** house ↔ detached garage: shortest distance between the walls */
+function GapOverlay() {
+  const d = useDerived();
+  const mode = useStore((s) => s.layers.dimsMode ?? 'corners');
+  const g = d.gap;
+  if (!g || mode === 'off') return null;
+  const color = g.overlap ? '#dc2626' : '#7c3aed';
+  return (
+    <Overlay order={30}>
+      {!g.overlap && <Lines points={[v3(g.p), v3(g.q)]} color={color} width={2} />}
+      <Label at={[(g.p[0] + g.q[0]) / 2, (g.p[1] + g.q[1]) / 2]} className={`dim-label gap ${g.overlap ? 'fail' : ''}`}>
+        {g.overlap ? `dom i ${g.label.toLowerCase()} nachodzą na siebie` : `dom–${g.label.toLowerCase()}: ${f(g.d, 2)} m`}
+      </Label>
     </Overlay>
   );
 }
@@ -111,19 +142,25 @@ function CornerOverlay() {
   const mode = useStore((s) => s.layers.dimsMode ?? 'corners');
   const pl = useStore((s) => s.placement);
   const showLabels = mode !== 'off';
-  const fp = d.footprint;
-  // corner letters, pushed slightly outward from the house centre
-  const corners = fp.flatMap((c, i) => {
-    if (!d.corners.some((m) => m.corner === i)) return []; // unmeasured (B) or no clear line to the boundary
-    const v: P2 = [c[0] - pl.x, c[1] - pl.z];
-    const L = Math.hypot(v[0], v[1]) || 1;
-    return [{ i, at: [c[0] + (v[0] / L) * 0.9, c[1] + (v[1] / L) * 0.9] as P2 }];
-  });
+  const buildings = [
+    { key: 'main', fp: d.footprint, pl, corners: d.corners, letter: (i: number) => cornerLabel(i) },
+    ...d.annexes.map((a) => ({ key: a.id, fp: a.footprint, pl: a.placement, corners: a.corners, letter: (i: number) => `${a.label.charAt(0).toUpperCase()}${i + 1}` })),
+  ];
+  const all = buildings.flatMap((b) => b.corners);
+  // corner letters, pushed slightly outward from each building's centre
+  const letters = buildings.flatMap((b) =>
+    b.fp.flatMap((c, i) => {
+      if (!b.corners.some((m) => m.corner === i)) return []; // unmeasured (B) or no clear line to the boundary
+      const v: P2 = [c[0] - b.pl.x, c[1] - b.pl.z];
+      const L = Math.hypot(v[0], v[1]) || 1;
+      return [{ key: `${b.key}-${i}`, text: b.letter(i), at: [c[0] + (v[0] / L) * 0.9, c[1] + (v[1] / L) * 0.9] as P2 }];
+    }),
+  );
   const color = (m: number) => (m < 3 ? '#dc2626' : m < 4 ? '#d97706' : '#1e40af');
   return (
     <Overlay order={30}>
       {mode === 'corners' &&
-        d.corners.map((c) => (
+        all.map((c) => (
           <group key={`${c.label}-${c.edge}`}>
             <Lines points={[v3(c.p), v3(c.q)]} color={color(c.d)} width={1.3} opacity={0.9} />
             <Label at={[(c.p[0] + c.q[0]) / 2, (c.p[1] + c.q[1]) / 2]} className={`dim-label corner ${c.d < 3 ? 'fail' : c.d < 4 ? 'warn' : ''}`}>
@@ -131,8 +168,8 @@ function CornerOverlay() {
             </Label>
           </group>
         ))}
-      {showLabels && corners.map((c) => (
-        <Label key={c.i} at={c.at} className="corner-label">{cornerLabel(c.i)}</Label>
+      {showLabels && letters.map((c) => (
+        <Label key={c.key} at={c.at} className="corner-label">{c.text}</Label>
       ))}
       {showLabels &&
         d.corners
@@ -152,8 +189,8 @@ function SetbackOverlay() {
   // nearest boundary in front of each wall, coloured by the WT §12 check
   return (
     <Overlay order={30}>
-      {d.setbacks.walls.map((w) => (
-        <group key={w.wallId}>
+      {[{ key: 'main', walls: d.setbacks.walls }, ...d.annexes.map((a) => ({ key: a.id, walls: a.setbacks.walls }))].flatMap((b) => b.walls.map((w) => ({ ...w, k: `${b.key}-${w.wallId}` }))).map((w) => (
+        <group key={w.k}>
           <Lines points={[v3(w.from), v3(w.to)]} color={col[w.status]} width={2.5} />
           <Label at={[(w.from[0] + w.to[0]) / 2, (w.from[1] + w.to[1]) / 2]} className={`dim-label ${w.status}`}>
             {f(Math.max(0, w.distance), 2)} m
@@ -271,12 +308,14 @@ function GardenOverlay({ draft, cursor }: { draft: P2[]; cursor: P2 | null }) {
   );
 }
 
+/** rotate handle in front of the building the controls act on */
+const handlePos = (def: HouseDef, pl: Placement) => toSite(toLocal(def, def.width / 2, def.depth + 3.2), pl);
+
 function RotateHandle() {
-  const pl = useStore((s) => s.placement);
   const tool = useStore((s) => s.tool);
-  const house = useHouse();
+  const t = useTarget();
   if (tool !== 'select') return null;
-  const h = toSite(toLocal(house, house.width / 2, house.depth + 3.2), pl);
+  const h = handlePos(t.def, t.placement);
   return (
     <Overlay order={40}>
       <mesh position={[h[0], OVER + 4, h[1]]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={41}>
@@ -288,7 +327,7 @@ function RotateHandle() {
   );
 }
 
-type Drag = { kind: 'move'; dx: number; dz: number } | { kind: 'rotate'; start: number; bearing0: number } | null;
+type Drag = { kind: 'move'; id: string; dx: number; dz: number } | { kind: 'rotate'; id: string; start: number; bearing0: number } | null;
 
 function Interaction({ draft, setDraft, setCursor }: { draft: P2[]; setDraft: (d: P2[]) => void; setCursor: (p: P2 | null) => void }) {
   const controls = useThree((s) => s.controls) as unknown as { enabled: boolean } | null;
@@ -319,15 +358,17 @@ function Interaction({ draft, setDraft, setCursor }: { draft: P2[]; setDraft: (d
       if (e.key === 'Backspace' && draft.length) { setDraft(draft.slice(0, -1)); e.preventDefault(); }
       if ((e.key === 'Delete' || e.key === 'Backspace') && !draft.length && s.selected) s.removeSelected();
       const step = e.shiftKey ? 1 : 0.1;
-      const b = (s.placement.bearing * Math.PI) / 180;
       if (s.tool === 'select' && !s.selected) {
-        if (e.key === 'ArrowUp') s.setPlacement({ z: s.placement.z - step });
-        if (e.key === 'ArrowDown') s.setPlacement({ z: s.placement.z + step });
-        if (e.key === 'ArrowLeft') s.setPlacement({ x: s.placement.x - step });
-        if (e.key === 'ArrowRight') s.setPlacement({ x: s.placement.x + step });
-        if (e.key === 'q' || e.key === 'Q') s.setPlacement({ bearing: (s.placement.bearing - (e.shiftKey ? 15 : 1) + 360) % 360 });
-        if (e.key === 'e' || e.key === 'E') s.setPlacement({ bearing: (s.placement.bearing + (e.shiftKey ? 15 : 1)) % 360 });
-        void b;
+        // arrows / Q / E act on the selected building (house or detached garage)
+        const house = houseById(s.projectId);
+        const cur = buildingPlacement(house, s.target);
+        const set = (p: Partial<Placement>) => setBuildingPlacement(house, s.target, p);
+        if (e.key === 'ArrowUp') set({ z: cur.z - step });
+        if (e.key === 'ArrowDown') set({ z: cur.z + step });
+        if (e.key === 'ArrowLeft') set({ x: cur.x - step });
+        if (e.key === 'ArrowRight') set({ x: cur.x + step });
+        if (e.key === 'q' || e.key === 'Q') set({ bearing: (cur.bearing - (e.shiftKey ? 15 : 1) + 360) % 360 });
+        if (e.key === 'e' || e.key === 'E') set({ bearing: (cur.bearing + (e.shiftKey ? 15 : 1)) % 360 });
       }
     };
     window.addEventListener('keydown', onKey);
@@ -341,14 +382,18 @@ function Interaction({ draft, setDraft, setCursor }: { draft: P2[]; setDraft: (d
     const s = st.getState();
     if (s.tool !== 'select') return;
     const p = pt(e);
-    const pl = s.placement;
     const house = houseById(s.projectId);
-    const handle = toSite(toLocal(house, house.width / 2, house.depth + 3.2), pl);
+    const tpl = buildingPlacement(house, s.target);
+    const tdef = house.annexes?.find((a) => a.id === s.target)?.def ?? house;
+    const handle = handlePos(tdef, tpl);
+    // separate buildings (smaller) are hit-tested before the house
+    const hit = [...d.annexes.map((a) => ({ id: a.id, poly: a.platform.polygon })), { id: 'main', poly: d.platform.polygon }].find((b) => pointInPolygon(p, b.poly));
     if (Math.hypot(p[0] - handle[0], p[1] - handle[1]) < 1.0) {
-      drag.current = { kind: 'rotate', start: Math.atan2(p[0] - pl.x, -(p[1] - pl.z)), bearing0: pl.bearing };
-    } else if (pointInPolygon(p, d.platform.polygon)) {
-      drag.current = { kind: 'move', dx: pl.x - p[0], dz: pl.z - p[1] };
-      st.setState({ selected: null });
+      drag.current = { kind: 'rotate', id: s.target, start: Math.atan2(p[0] - tpl.x, -(p[1] - tpl.z)), bearing0: tpl.bearing };
+    } else if (hit) {
+      const pl = buildingPlacement(house, hit.id);
+      drag.current = { kind: 'move', id: hit.id, dx: pl.x - p[0], dz: pl.z - p[1] };
+      st.setState({ selected: null, target: hit.id });
     } else {
       // select garden item
       const tree = s.trees.find((t) => Math.hypot(t.x - p[0], t.z - p[1]) < Math.max(0.8, t.height * 0.3));
@@ -366,15 +411,16 @@ function Interaction({ draft, setDraft, setCursor }: { draft: P2[]; setDraft: (d
     setCursor(p);
     const dr = drag.current;
     if (!dr) return;
-    const s = st.getState();
+    const house = houseById(st.getState().projectId);
     if (dr.kind === 'move') {
-      s.setPlacement({ x: Math.round((p[0] + dr.dx) * 20) / 20, z: Math.round((p[1] + dr.dz) * 20) / 20 });
+      setBuildingPlacement(house, dr.id, { x: Math.round((p[0] + dr.dx) * 20) / 20, z: Math.round((p[1] + dr.dz) * 20) / 20 });
     } else {
-      const a = Math.atan2(p[0] - s.placement.x, -(p[1] - s.placement.z));
+      const pl = buildingPlacement(house, dr.id);
+      const a = Math.atan2(p[0] - pl.x, -(p[1] - pl.z));
       let b = dr.bearing0 + ((a - dr.start) * 180) / Math.PI;
       const snap = e.shiftKey ? 15 : 1;
       b = ((Math.round(b / snap) * snap) % 360 + 360) % 360;
-      s.setPlacement({ bearing: b });
+      setBuildingPlacement(house, dr.id, { bearing: b });
     }
   };
 
@@ -474,6 +520,7 @@ export function PlacementScene() {
       <HousePlanOverlay />
       <SetbackOverlay />
       <CornerOverlay />
+      <GapOverlay />
       <RotateHandle />
       <Interaction draft={draft} setDraft={setDraft} setCursor={setCursor} />
     </LabelContext.Provider>
@@ -496,7 +543,7 @@ export function PlacementOverlay() {
 
 function ToolHint({ tool, draftLen }: { tool: Tool; draftLen: number }) {
   const hints: Partial<Record<Tool, string>> = {
-    select: 'Przeciągnij dom, aby go przesunąć · przeciągnij niebieski uchwyt, aby obrócić (Shift = co 15°) · strzałki przesuwają, Q/E obracają · przeciągnij teren, aby przesunąć widok, kółko myszy przybliża',
+    select: 'Przeciągnij dom (lub garaż), aby go przesunąć · przeciągnij niebieski uchwyt, aby obrócić (Shift = co 15°) · strzałki przesuwają, Q/E obracają · przeciągnij teren, aby przesunąć widok, kółko myszy przybliża',
     fence: 'Kliknij granicę działki, aby dodać lub usunąć ogrodzenie (przerwy zostają tam, gdzie przecina je podjazd lub ścieżka)',
     buildingLine: 'Klikaj kolejne punkty linii zabudowy (z MPZP / od drogi) · dwuklik lub Enter kończy',
     measure: 'Kliknij dwa punkty, aby zmierzyć odległość',

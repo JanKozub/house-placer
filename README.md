@@ -55,6 +55,7 @@ If no imagery is available, the ground falls back to a synthetic field texture.
 
 1. Write a `HouseDef` (see `src/house/types.ts`) in `src/house/<id>.ts`. Use the project's dimension chains for the outline, walls and openings, and the section for levels. Give the roof as one or more rectangular `hip` or `gable` volumes with their eave-edge height, plus explicit trim lists: soffits, fascia, gutters, downpipes and gable triangles.
 2. Add it to `HOUSE_LIST` in `src/house/projects.ts`.
+   A project can have separate buildings (a detached garage): list them in `annexes`, each a full `HouseDef` in its own plan coordinates with a `defaultAt` spot in the house's plan. Every annex gets its own placement, platform and floor level, is dragged and rotated on its own in the plan view (the "Dom | Garaż" switch picks which one the inputs and Q/E act on), and is included in the setback, corner and gap checks.
 3. Run `npm test`. The generic checks run on every project: outline and walls agree, openings fit their walls, roof faces tile the roof outline without steps, and the ridge height matches the section.
 
 ## Data and accuracy
@@ -66,6 +67,7 @@ If no imagery is available, the ground falls back to a synthetic field texture.
   −0.02/−0.17/−0.32, opening heads +2.35, ring beam +2.76, eave soffit +2.73 with a 1.00 m
   overhang, ridge +6.32 and chimney +6.70. Interior partitions are approximate (they are only
   seen through the glass).
+- Ambrozja 17 (garaż wolnostojący), in `src/house/ambrozja17-detached.ts`, is derived from the same drawings. The bedroom wing ends at the living wing's front line (Y = 15.65), so the front is one straight wall. The carport is dropped, and the front gable overhangs 1.00 m over the entrance so its verge meets the living-wing eave. The garage is room 1/17 on its own: 6.45 × 7.90 m with 45 cm walls (5.55 × 7.00 m inside), the Hörmann 450×225 door and a 30° gable roof, with its floor 0.27 m below the house floor in the drawings, so the eaves line up on level ground. Its side door is an assumption, since the drawings have none.
 - Dom Grela is described in `src/house/grela.ts`, taken from the TE-DE drawing set: ground-floor plan, section A-A and roof plan. It covers:
   - Main block 15.81 × 12.58 m and garage wing 6.69 × 10.98 m.
   - Covered terrace 6.56 × 2.86 with post S-1, and the entrance recessed 0.80 m.

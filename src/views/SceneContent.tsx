@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 import { useDerived, useSite } from '../derived';
 import { useStore } from '../store';
-import { HouseModel } from '../house/HouseModel';
+import { HouseModel, useHouseMaterials } from '../house/HouseModel';
 import { Terrain } from '../site/Terrain';
 import { Fence, Trees } from '../site/Garden';
 import { fillSkyTexture, horizonColor, makeSkyTexture } from '../site/sun';
@@ -95,17 +95,24 @@ export function SceneContent({ shadows = true, fixedSun }: { shadows?: boolean; 
   const target = useMemo(() => new THREE.Vector3(placement.x, d.floorY, placement.z), [placement.x, placement.z, d.floorY]);
   const dir = fixedSun ?? d.sun.dir;
   const night = fixedSun ? 0 : d.sun.night;
+  const mats = useHouseMaterials();
 
   return (
     <>
       <SkyAndSun dir={dir} night={night} target={target} shadows={shadows} />
-      <Terrain site={site} platform={d.platform} apron={d.apron} />
+      <Terrain site={site} platforms={d.platforms} />
       <Landscape site={site} />
       <Buildings site={site} visible={showBuildings} />
       <ApronMesh apron={d.apron} footprint={d.footprint} y={d.platformH - site.baseH + 0.015} />
-      <HouseModel placement={placement} floorY={d.floorY} night={night} />
-      <Trees site={site} platform={d.platform} />
-      <Fence site={site} platform={d.platform} />
+      <HouseModel house={d.house} placement={placement} floorY={d.floorY} night={night} mats={mats} />
+      {d.annexes.map((a) => (
+        <group key={a.id}>
+          <ApronMesh apron={a.apron} footprint={a.footprint} y={a.platformH - site.baseH + 0.015} />
+          <HouseModel house={a.def} placement={a.placement} floorY={a.floorY} night={night} mats={mats} name={a.id} />
+        </group>
+      ))}
+      <Trees site={site} platform={d.platforms} />
+      <Fence site={site} platform={d.platforms} />
     </>
   );
 }

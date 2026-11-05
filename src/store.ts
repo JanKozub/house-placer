@@ -49,8 +49,11 @@ export interface Sun {
   minutes: number; // local time (Europe/Warsaw) minutes after midnight
 }
 
+/** a separate building of the project (detached garage): its own placement and floor level */
+export interface AnnexState { placement: Placement; floorLevel: number | null }
+
 /** per-house state: where each project stands on the plot */
-export interface ProjectState { placement: Placement; floorLevel: number | null }
+export interface ProjectState { placement: Placement; floorLevel: number | null; annexes?: Record<string, AnnexState> }
 
 export interface AppState {
   tab: 'preview' | 'placement';
@@ -62,6 +65,10 @@ export interface AppState {
   placementInitialised: boolean;
   /** finished floor ±0.00 in m a.s.l.; null = auto (balanced cut/fill) */
   floorLevel: number | null;
+  /** the active project's separate buildings, by annex id (missing = default spot, auto level) */
+  annexes: Record<string, AnnexState>;
+  /** which building the placement controls act on: 'main' or an annex id */
+  target: string;
   sun: Sun;
   palette: Palette;
   garden: GardenArea[];
@@ -89,8 +96,10 @@ export interface AppState {
 /** persisted state migration — v1 (single house): everything belonged to Ambrozja 17 */
 export function migrateState(state: unknown, version: number) {
   const s = (state ?? {}) as Partial<AppState>;
-  if (version < 2) return { ...s, projectId: 'ambrozja17', projectState: {} };
-  return s;
+  let out: Partial<AppState> = s;
+  if (version < 2) out = { ...out, projectId: 'ambrozja17', projectState: {} };
+  if (version < 3) out = { ...out, annexes: {}, target: 'main' };
+  return out;
 }
 
 export const uid = () => Math.random().toString(36).slice(2, 9);
@@ -104,6 +113,8 @@ export const useStore = create<AppState>()(
       placement: { x: 0, z: 0, bearing: 222, mirror: false },
       placementInitialised: false,
       floorLevel: null,
+      annexes: {},
+      target: 'main',
       sun: { month: 6, day: 21, minutes: 17 * 60 },
       palette: DEFAULT_PALETTE,
       garden: [],
@@ -119,9 +130,9 @@ export const useStore = create<AppState>()(
       setProject: (id) => {
         const s = get();
         if (id === s.projectId) return;
-        const saved = { ...s.projectState, [s.projectId]: { placement: s.placement, floorLevel: s.floorLevel } };
+        const saved = { ...s.projectState, [s.projectId]: { placement: s.placement, floorLevel: s.floorLevel, annexes: s.annexes } };
         const next = saved[id] ?? { placement: { ...s.placement, mirror: false }, floorLevel: null };
-        set({ projectId: id, projectState: saved, placement: next.placement, floorLevel: next.floorLevel, selected: null });
+        set({ projectId: id, projectState: saved, placement: next.placement, floorLevel: next.floorLevel, annexes: next.annexes ?? {}, target: 'main', selected: null });
       },
       setPlacement: (p) => set({ placement: { ...get().placement, ...p } }),
       setSun: (p) => set({ sun: { ...get().sun, ...p } }),
@@ -141,7 +152,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'house-placer-v1',
-      version: 2,
+      version: 3,
       migrate: (state, version) => migrateState(state, version) as AppState,
       partialize: (s) => ({
         tab: s.tab,
@@ -150,6 +161,8 @@ export const useStore = create<AppState>()(
         placement: s.placement,
         placementInitialised: s.placementInitialised,
         floorLevel: s.floorLevel,
+        annexes: s.annexes,
+        target: s.target,
         sun: s.sun,
         palette: s.palette,
         garden: s.garden,
@@ -163,4 +176,4 @@ export const useStore = create<AppState>()(
   ),
 );
 
-export const PERSIST_KEYS = ['projectId', 'projectState', 'placement', 'floorLevel', 'sun', 'palette', 'garden', 'trees', 'fenceEdges', 'fenceHeight', 'buildingLine', 'layers'] as const;
+export const PERSIST_KEYS = ['projectId', 'projectState', 'placement', 'floorLevel', 'annexes', 'sun', 'palette', 'garden', 'trees', 'fenceEdges', 'fenceHeight', 'buildingLine', 'layers'] as const;

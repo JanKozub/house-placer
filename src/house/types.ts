@@ -89,6 +89,19 @@ export interface Porch { x0: number; x1: number; y0: number; y1: number; posts: 
 
 export interface HouseView { at: Vec2 | 'valleyWindow'; h: number; look: Vec2 | 'valley'; label: string }
 
+/**
+ * A separate building that belongs to a project (e.g. a detached garage). It is a full HouseDef in
+ * its own plan coordinates, placed and levelled independently of the main house.
+ */
+export interface Annex {
+  id: string;
+  /** short name in the UI ("Garaż") */
+  label: string;
+  def: HouseDef;
+  /** where the annex's plan origin starts, in the main house's plan coords (same bearing as the house) */
+  defaultAt: Vec2;
+}
+
 export interface HouseDef {
   id: string;
   name: string;
@@ -136,4 +149,6 @@ export interface HouseDef {
   wallLamps: Vec2[];
   /** eye-level views from the house */
   views: Record<'valley' | 'terrace' | 'living' | 'kitchen' | 'bedroom', HouseView>;
+  /** separate buildings of this project, each placed on its own (detached garage) */
+  annexes?: Annex[];
 }

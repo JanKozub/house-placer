@@ -100,6 +100,8 @@ code { background: #f1efea; padding: 1px 4px; border-radius: 4px; }
 .dim-label.ok { color: var(--ok); border-color: var(--ok); }
 .dim-label.warn { color: var(--warn); border-color: var(--warn); }
 .dim-label.fail { color: var(--fail); border-color: var(--fail); }
+.dim-label.gap { color: #7c3aed; border-color: #7c3aed; }
+.dim-label.gap.fail { color: var(--fail); border-color: var(--fail); }
 .dim-label.other { color: #334155; border-color: #94a3b8; font-weight: 600; font-size: 10px; background: rgba(255, 255, 255, 0.9); }
 .edge-label { font-size: 10px; color: #fde68a; text-shadow: 0 0 3px #000, 0 0 2px #000; }
 .nb-label { font-size: 10px; color: rgba(255, 255, 255, 0.8); text-shadow: 0 0 3px #000; }

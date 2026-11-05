@@ -63,6 +63,7 @@ function ShadowCache() {
   const d = useDerived();
   const tab = useStore((s) => s.tab);
   const placement = useStore((s) => s.placement);
+  const annexes = useStore((s) => s.annexes);
   const trees = useStore((s) => s.trees);
   const fenceEdges = useStore((s) => s.fenceEdges);
   const fenceHeight = useStore((s) => s.fenceHeight);
@@ -82,7 +83,7 @@ function ShadowCache() {
     clearTimeout(timer.current);
     if (performance.now() - last.current > 150) fire();
     else timer.current = setTimeout(fire, 150);
-  }, [gl, invalidate, d.sun.dir.x, d.sun.dir.y, d.sun.dir.z, d.floorY, tab, placement, trees, fenceEdges, fenceHeight, garden]);
+  }, [gl, invalidate, d.sun.dir.x, d.sun.dir.y, d.sun.dir.z, d.floorY, tab, placement, annexes, d.annexes, trees, fenceEdges, fenceHeight, garden]);
   return null;
 }
 
