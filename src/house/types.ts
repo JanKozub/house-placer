@@ -23,6 +23,12 @@ export interface Opening {
   panes?: number;
   /** project symbol, for reference */
   ref?: string;
+  /** floor level (above ±0.00) of the storey this opening serves — the attic is +3.06 in Argania 2.
+   *  Only sets the eye height of views; sill stays relative to ±0.00. */
+  level?: number;
+  /** 'gable': glazing whose top follows the two roof slopes up to an apex (a pentagon); the total
+   *  height is `height`. It must sit in a wall that carries a gable (see Roof.gables). */
+  shape?: 'rect' | 'gable';
 }
 
 export interface WallEdge {
@@ -86,6 +92,23 @@ export interface Roof {
 
 /** a covered area (carport, terrace roof) with a flat ceiling and clad posts */
 export interface Porch { x0: number; x1: number; y0: number; y1: number; posts: Vec2[]; postSize: number; ceiling: number; soffit?: boolean }
+
+/** a roof window lying in the roof slope; `at` is its centre in plan, `length` along the slope */
+export interface RoofWindow { at: Vec2; width: number; length: number }
+
+/** thin cladding panels on the outside of a wall, cut around its openings */
+export interface FacadeZone {
+  wall: string;
+  /** absolute plan coordinates along the wall (X for horizontal walls, Y for vertical), like Opening.at */
+  from: number;
+  to: number;
+  h0: number;
+  h1: number;
+  finish: 'accent' | 'wood';
+}
+
+/** an extra box in plan coords (pergola beams, canopies, posts) */
+export interface ExtraBox { x0: number; x1: number; y0: number; y1: number; h0: number; h1: number; part: 'plaster' | 'accent' | 'wood' | 'frame' | 'trim' | 'soffit' }
 
 export interface HouseView { at: Vec2 | 'valleyWindow'; h: number; look: Vec2 | 'valley'; label: string }
 
@@ -151,4 +174,13 @@ export interface HouseDef {
   views: Record<'valley' | 'terrace' | 'living' | 'kitchen' | 'bedroom', HouseView>;
   /** separate buildings of this project, each placed on its own (detached garage) */
   annexes?: Annex[];
+
+  // ---- optional: houses with a usable attic and richer façades (Argania 2) ----
+  /** slab of the upper storey (walkable attic); voids are double-height spaces and the stairwell */
+  upperFloor?: { level: number; thickness: number; voids?: { x0: number; x1: number; y0: number; y1: number }[] };
+  /** rooms of the upper storey (info only; the plan view shows the ground floor) */
+  upperRooms?: { name: string; area: number }[];
+  roofWindows?: RoofWindow[];
+  facadeZones?: FacadeZone[];
+  extras?: ExtraBox[];
 }

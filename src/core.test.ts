@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
-import { buildHouse, footprintLocal } from './house/geometry';
+import { buildHouse, footprintLocal, gableEaveUnder, gableOfWall, openingPolygon, openingSpan } from './house/geometry';
 import { ambrozja17 } from './house/ambrozja17';
 import { grela } from './house/grela';
 import { ambrozja17Detached, detachedGarage } from './house/ambrozja17-detached';
 import { defaultAnnexPlacement } from './house/annex';
 import { carvedHeight } from './site/Terrain';
+import { argania2 } from './house/argania2';
 import { HOUSE_LIST } from './house/projects';
 import { polygonAreaPlan, roofFaces, roofTopAt } from './house/roof';
 import { migrateState, useStore } from './store';
@@ -34,17 +35,29 @@ describe.each(ALL_BUILDINGS.map((h) => [h.name, h] as const))('house project %s'
     });
   });
 
-  it('openings sit inside their walls, clear of the corners, below the wall top', () => {
+  it('openings sit inside their walls, clear of the corners, below the wall top or inside its gable', () => {
+    const n = h.outline.length;
+    // turn at outline vertex i: > 0 convex corner, < 0 inner corner, 0 straight through
+    const turn = (i: number) => {
+      const p = h.outline[(i + n - 1) % n], c = h.outline[i], q = h.outline[(i + 1) % n];
+      return (c[0] - p[0]) * (q[1] - c[1]) - (c[1] - p[1]) * (q[0] - c[0]);
+    };
     for (const o of h.openings) {
-      const w = h.walls.find((ww) => ww.id === o.wall)!;
+      const wi = h.walls.findIndex((ww) => ww.id === o.wall);
+      const w = h.walls[wi];
       expect(w).toBeTruthy();
-      const horiz = Math.abs(w.a[1] - w.b[1]) < 1e-6;
-      const lo = Math.min(horiz ? w.a[0] : w.a[1], horiz ? w.b[0] : w.b[1]);
-      const hi = Math.max(horiz ? w.a[0] : w.a[1], horiz ? w.b[0] : w.b[1]);
-      // stay clear of the neighbouring wall at a corner: glass inside a wall stalls the path tracer
-      expect(o.at - o.width / 2).toBeGreaterThanOrEqual(lo + h.wallThickness - 1e-9);
-      expect(o.at + o.width / 2).toBeLessThanOrEqual(hi - h.wallThickness + 1e-9);
-      expect(o.sill + o.height).toBeLessThan(w.top ?? h.wallTop);
+      const { u0, u1 } = openingSpan(o, w);
+      const L = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]);
+      // stay clear of the neighbouring wall at a convex corner: glass inside a wall stalls the path
+      // tracer (at an inner corner or a straight-through vertex the other wall is not in the way)
+      expect(u0).toBeGreaterThanOrEqual((turn(wi) > 1e-9 ? h.wallThickness : 0) - 1e-9);
+      expect(u1).toBeLessThanOrEqual(L - (turn((wi + 1) % n) > 1e-9 ? h.wallThickness : 0) + 1e-9);
+      const top = o.sill + o.height;
+      if (top < (w.top ?? h.wallTop)) continue;
+      // above the wall top only within the gable standing on this wall, under the roof's underside
+      expect(gableOfWall(h, w)).toBeTruthy();
+      const under = (u: number) => gableEaveUnder(h) + Math.min(u, L - u) * Math.tan((h.roof.pitchDeg * Math.PI) / 180);
+      for (const [u, v] of openingPolygon(h, o, u0, u1)) expect(v).toBeLessThan(under(u) - 0.1);
     }
   });
 
@@ -77,7 +90,7 @@ describe.each(ALL_BUILDINGS.map((h) => [h.name, h] as const))('house project %s'
     expect(size.x).toBeGreaterThan(h.width);
     expect(size.x).toBeLessThan(h.width + 3);
     expect(size.z).toBeGreaterThan(h.depth);
-    expect(size.z).toBeLessThan(h.depth + 3);
+    expect(size.z).toBeLessThan(h.depth + 6); // incl. a terrace / pergola
     if (h.roof.chimneys.length) expect(box.max.y).toBeGreaterThan(h.roof.ridgeTop); // chimneys above the ridge line
     else expect(box.max.y).toBeCloseTo(h.roof.ridgeTop, 2);
     expect(parts.glass).toBeTruthy();
@@ -193,6 +206,59 @@ describe('Ambrozja 17 with a detached garage', () => {
     const b: P2[] = [[13, 2], [18, 2], [18, 6], [13, 6]];
     expect(polygonGap(a, b)).toMatchObject({ d: 3, overlap: false });
     expect(polygonGap(a, b.map(([x, z]) => [x - 5, z] as P2)).overlap).toBe(true);
+  });
+});
+
+describe('Dom w Arganiach 2 (G2E)', () => {
+  const h = argania2;
+  const T38 = Math.tan((38 * Math.PI) / 180);
+  it('L-shaped 14.30 × 12.45 m (7.40 + 6.90, 8.70 + 3.75), pow. zabudowy ≈ 150.82 m²', () => {
+    expect([h.width, h.depth]).toEqual([14.3, 12.45]);
+    // outer walls without the 1 cm render; the spec area includes it
+    expect(Math.abs(polygonArea(h.outline) - h.footprintArea)).toBeLessThan(0.8);
+  });
+
+  it('room schedules: ground floor 114.75 m² (garage 35.20), attic 89.33 m², together the usable 204.08', () => {
+    const gf = h.rooms.reduce((s, r) => s + r.area, 0), up = h.upperRooms!.reduce((s, r) => s + r.area, 0);
+    expect(gf).toBeCloseTo(114.75, 2);
+    expect(up).toBeCloseTo(89.33, 2);
+    expect(gf + up).toBeCloseTo(h.usableArea, 2);
+    expect(h.rooms.find((r) => r.name.includes('Garaż'))!.area).toBe(35.2);
+  });
+
+  it('38° roof, ridge +7.98 (section); the garage-wing ridge is lower and meets the main front slope', () => {
+    expect(h.roof.pitchDeg).toBe(38);
+    expect(roofTopAt(h, 7, 4.35)).toBeCloseTo(7.98, 6);
+    const wing = roofTopAt(h, 10.85, 11)!;
+    expect(wing).toBeCloseTo(h.roof.topAtWall + (6.9 / 2) * T38, 6);
+    expect(wing).toBeLessThan(7.98 - 0.5);
+  });
+
+  it('attic windows open from the attic floor, inside their gables; the glazed gable follows the roof', () => {
+    const attic = h.openings.filter((o) => o.level);
+    expect(attic).toHaveLength(5);
+    for (const o of attic) {
+      expect(o.level).toBe(h.upperFloor!.level);
+      expect(o.sill).toBeGreaterThanOrEqual(h.upperFloor!.level);
+    }
+    const g = h.openings.find((o) => o.shape === 'gable')!;
+    const w = h.walls.find((ww) => ww.id === g.wall)!;
+    const { u0, u1 } = openingSpan(g, w);
+    const poly = openingPolygon(h, g, u0, u1);
+    expect(poly).toHaveLength(5);
+    // sloped edges parallel to the roof
+    expect((poly[3][1] - poly[2][1]) / (poly[3][0] - poly[2][0])).toBeCloseTo(-T38, 6);
+  });
+
+  it('builds roof windows on the slopes, façade zones, the upper floor and the pergola', () => {
+    const parts = buildHouse(h);
+    expect(parts.accent!.getAttribute('position').count).toBeGreaterThan(0);
+    expect(parts.wood!.getAttribute('position').count).toBeGreaterThan(0);
+    const faces = roofFaces(h);
+    for (const rw of h.roofWindows!) expect(faces.some((f) => pointInPolygon(rw.at, f.poly))).toBe(true);
+    // the attic floor is drawn at +3.06
+    parts.floor!.computeBoundingBox();
+    expect(parts.floor!.boundingBox!.max.y).toBeCloseTo(3.065, 3);
   });
 });
 

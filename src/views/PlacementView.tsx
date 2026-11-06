@@ -83,7 +83,7 @@ function BuildingPlan({ house, pl, fp, selected, frontLabel }: { house: HouseDef
           {house.partitions.map(([x1, y1, x2, y2], i) => (
             <Lines key={i} points={[v3(toS(x1, y1)), v3(toS(x2, y2))]} color="#4b5563" width={1.2} />
           ))}
-          {house.openings.map((o, i) => {
+          {house.openings.filter((o) => !o.level).map((o, i) => {
             const w = house.walls.find((ww) => ww.id === o.wall)!;
             const horiz = Math.abs(w.a[1] - w.b[1]) < 1e-6;
             const a: P2 = horiz ? [o.at - o.width / 2, w.a[1]] : [w.a[0], o.at - o.width / 2];

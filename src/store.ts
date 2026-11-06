@@ -32,6 +32,8 @@ export interface Palette {
   wood: string;
   plinth: string;
   paving: string;
+  /** second render colour of façade zones (e.g. a dark ground-floor band); optional in older saves */
+  accent?: string;
 }
 
 export const DEFAULT_PALETTE: Palette = {
@@ -41,6 +43,7 @@ export const DEFAULT_PALETTE: Palette = {
   wood: '#b07a45',
   plinth: '#55585b',
   paving: '#cfc8bb',
+  accent: '#4b4f54',
 };
 
 export interface Sun {

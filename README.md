@@ -56,6 +56,7 @@ If no imagery is available, the ground falls back to a synthetic field texture.
 1. Write a `HouseDef` (see `src/house/types.ts`) in `src/house/<id>.ts`. Use the project's dimension chains for the outline, walls and openings, and the section for levels. Give the roof as one or more rectangular `hip` or `gable` volumes with their eave-edge height, plus explicit trim lists: soffits, fascia, gutters, downpipes and gable triangles.
 2. Add it to `HOUSE_LIST` in `src/house/projects.ts`.
    A project can have separate buildings (a detached garage): list them in `annexes`, each a full `HouseDef` in its own plan coordinates with a `defaultAt` spot in the house's plan. Every annex gets its own placement, platform and floor level, is dragged and rotated on its own in the plan view (the "Dom | Garaż" switch picks which one the inputs and Q/E act on), and is included in the setback, corner and gap checks.
+   Houses with a usable attic or a richer façade can also use: `Opening.level` (the storey an opening serves, e.g. attic windows; sets the eye height of views) and `Opening.shape: 'gable'` (glazing that follows the roof slopes), openings above the wall top inside that wall's gable, `upperFloor` (attic slab with voids), `upperRooms`, `roofWindows`, `facadeZones` (dark render band / wood cladding, cut around openings; colour "Tynk – pas ciemny") and `extras` (boxes for pergolas, canopies, posts).
 3. Run `npm test`. The generic checks run on every project: outline and walls agree, openings fit their walls, roof faces tile the roof outline without steps, and the ridge height matches the section.
 
 ## Data and accuracy
@@ -68,6 +69,13 @@ If no imagery is available, the ground falls back to a synthetic field texture.
   overhang, ridge +6.32 and chimney +6.70. Interior partitions are approximate (they are only
   seen through the glass).
 - Ambrozja 17 (garaż wolnostojący), in `src/house/ambrozja17-detached.ts`, is derived from the same drawings. The bedroom wing ends at the living wing's front line (Y = 15.65), so the front is one straight wall. The carport is dropped, and the front gable overhangs 1.00 m over the entrance so its verge meets the living-wing eave. The garage is room 1/17 on its own: 6.45 × 7.90 m with 45 cm walls (5.55 × 7.00 m inside), the Hörmann 450×225 door and a 30° gable roof, with its floor 0.27 m below the house floor in the drawings, so the eaves line up on level ground. Its side door is an assumption, since the drawings have none.
+- Dom w Arganiach 2 (G2E, ARCHON+) is described in `src/house/argania2.ts`, transcribed from the dimensioned interactive plans, section and elevations on archon.pl. It covers:
+  - The L-shaped plan 14.30 × 12.45 m (7.40 + 6.90, 8.70 + 3.75) with the double garage projecting 3.75 m.
+  - Window and door sizes from the plan labels (330/230, 110/230, 220/230, 320/230, 250/140, 90/140, entrance 150/210, garage door 500/225).
+  - The attic: 160/220 and 80/140 gable windows, the 560/280 glazed gable over the garage, three 78/140 roof windows and the slab at +3.06 with the void over the living room.
+  - Levels: ground −0.32, ceiling 2.68, knee wall 1.25, a 38° roof with the ridge at +7.98.
+
+  Read off the elevations or assumed: the 0.80 m overhangs, the attic window sills, the glazed gable's sill (+3.20), chimney positions, the pergola and entrance-canopy heights, and the extent of the dark render and wood cladding. Interior partitions are approximate. The project card PDF is not in `docs/`: archon.pl only emails it after a form with personal data and consents.
 - Dom Grela is described in `src/house/grela.ts`, taken from the TE-DE drawing set: ground-floor plan, section A-A and roof plan. It covers:
   - Main block 15.81 × 12.58 m and garage wing 6.69 × 10.98 m.
   - Covered terrace 6.56 × 2.86 with post S-1, and the entrance recessed 0.80 m.

@@ -57,6 +57,7 @@ export function PreviewPanel() {
   ];
   const colors: [keyof Palette, string][] = [
     ['plaster', 'Tynk elewacji'], ['roof', 'Dach / rynny'], ['frames', 'Ramy okien'], ['wood', 'Drewno (podbitka, drzwi)'], ['plinth', 'Cokół'], ['paving', 'Nawierzchnia tarasu'],
+    ...(house.facadeZones?.some((z) => z.finish === 'accent') ? [['accent', 'Tynk – pas ciemny']] as [keyof Palette, string][] : []),
   ];
   return (
     <div className="panel">
@@ -81,7 +82,7 @@ export function PreviewPanel() {
         <div className="colors">
           {colors.map(([k, label]) => (
             <label key={k} className="color">
-              <input type="color" value={palette[k]} onChange={(e) => setPalette({ [k]: e.target.value })} />
+              <input type="color" value={palette[k] ?? DEFAULT_PALETTE[k]} onChange={(e) => setPalette({ [k]: e.target.value })} />
               <span>{label}</span>
             </label>
           ))}
@@ -109,6 +110,11 @@ export function PreviewPanel() {
           {house.name} ({house.code}) · {f(house.width)} × {f(house.depth)} m · pow. zabudowy {f(house.footprintArea)} m² · pow. użytkowa {f(house.usableArea)} m² · dach {house.pitchDeg}° · wys. kalenicy {f(house.heightTotal)} m
         </p>
         <p className="hint">±0,00 = {f(d.floorH)} m n.p.m. · front skierowany na azymut {f(useStore.getState().placement.bearing, 0)}°</p>
+        {house.upperRooms && (
+          <p className="hint">
+            Poddasze ({f(house.upperRooms.reduce((s2, r) => s2 + r.area, 0), 2)} m², posadzka +{f(house.upperFloor?.level ?? 0, 2)}): {house.upperRooms.map((r) => `${r.name.toLowerCase()} ${f(r.area, 2)}`).join(', ')} m².
+          </p>
+        )}
         {d.annexes.map((a) => (
           <p key={a.id} className="hint">
             {a.label} (osobny budynek): {f(a.def.width)} × {f(a.def.depth)} m · pow. {f(a.def.usableArea)} m² · wys. kalenicy {f(a.def.heightTotal)} m · posadzka {f(a.floorH)} m n.p.m.

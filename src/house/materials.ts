@@ -3,7 +3,7 @@
  * UVs throughout the model are in metres; each texture tile covers `tile` metres.
  */
 import * as THREE from 'three';
-import type { Palette } from '../store';
+import { DEFAULT_PALETTE, type Palette } from '../store';
 import type { PartName } from './geometry';
 
 type Draw = (ctx: CanvasRenderingContext2D, s: number) => void;
@@ -164,6 +164,7 @@ export function createMaterials(palette: Palette): MaterialSet {
     interior: new THREE.MeshStandardMaterial({ color: '#f4f1ec', roughness: 0.95 }),
     paving: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.85, map: textures.paving(palette.paving) }),
     gutter: new THREE.MeshStandardMaterial({ color: palette.roof, roughness: 0.4, metalness: 0.7, side: THREE.DoubleSide }),
+    accent: new THREE.MeshStandardMaterial({ color: palette.accent ?? DEFAULT_PALETTE.accent, roughness: 0.9, bumpMap: plasterBump, bumpScale: 0.6 }),
   };
   return {
     get: (p) => m[p],
@@ -171,6 +172,7 @@ export function createMaterials(palette: Palette): MaterialSet {
     update(pal) {
       (m.plaster as THREE.MeshStandardMaterial).color.set(pal.plaster);
       (m.plinth as THREE.MeshStandardMaterial).color.set(pal.plinth);
+      (m.accent as THREE.MeshStandardMaterial).color.set(pal.accent ?? DEFAULT_PALETTE.accent!);
       (m.roof as THREE.MeshStandardMaterial).color.set(pal.roof);
       (m.trim as THREE.MeshStandardMaterial).color.set(pal.roof);
       (m.gutter as THREE.MeshStandardMaterial).color.set(pal.roof);

@@ -34,16 +34,18 @@ function CameraRig({ preset, nonce, valley }: { preset: ViewPreset; nonce: numbe
     if (!controls) return;
     if (isHouseView(preset)) {
       const v = house.views[preset];
-      const eye = v.at === 'valleyWindow' ? valleyWindow(house, pl, valley ?? pl.bearing).eye : toSite(toLocal(house, ...v.at), pl);
+      const vw = v.at === 'valleyWindow' || v.look === 'valley' ? valleyWindow(house, pl, valley ?? pl.bearing) : null;
+      const eye = v.at === 'valleyWindow' ? vw!.eye : toSite(toLocal(house, ...v.at), pl);
       let dir: P2;
       if (v.look === 'valley') {
-        dir = valleyWindow(house, pl, valley ?? pl.bearing).look;
+        dir = vw!.look;
       } else {
         const at = v.at as P2;
         const p2 = toSite(toLocal(house, at[0] + v.look[0], at[1] + v.look[1]), pl);
         dir = [p2[0] - eye[0], p2[1] - eye[1]];
       }
-      const y = d.floorY + v.h;
+      // eye height above the storey of the chosen window (the attic for upstairs windows)
+      const y = d.floorY + v.h + (v.at === 'valleyWindow' ? vw!.level : 0);
       camera.position.set(eye[0], y, eye[1]);
       controls.target.set(eye[0] + dir[0] * 0.05, y - 0.004, eye[1] + dir[1] * 0.05);
       camera.fov = 70;
@@ -81,7 +83,7 @@ function valleyWindow(house: HouseDef, pl: Placement, valleyDeg: number) {
   const fp = footprintSite(house, pl);
   const vr = (valleyDeg * Math.PI) / 180;
   const vdir: P2 = [Math.sin(vr), -Math.cos(vr)];
-  let best = { score: -Infinity, eye: [pl.x, pl.z] as P2, ref: '', look: vdir };
+  let best = { score: -Infinity, eye: [pl.x, pl.z] as P2, ref: '', look: vdir, level: 0 };
   for (const o of house.openings) {
     if (o.kind === 'garage' || o.kind === 'door' || o.kind === 'entrance') continue;
     const w = house.walls.find((ww) => ww.id === o.wall)!;
@@ -90,7 +92,8 @@ function valleyWindow(house: HouseDef, pl: Placement, valleyDeg: number) {
     let n: P2 = [-(b[1] - a[1]) / L, (b[0] - a[0]) / L];
     const mid: P2 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     if (pointInPolygon([mid[0] + n[0] * 0.05, mid[1] + n[1] * 0.05], fp)) n = [-n[0], -n[1]];
-    const score = n[0] * vdir[0] + n[1] * vdir[1] + (o.height > 2 ? 0.05 : 0); // prefer tall glazing on ties
+    // prefer tall glazing, and upstairs windows (they see further down the valley) on near ties
+    const score = n[0] * vdir[0] + n[1] * vdir[1] + (o.height > 2 ? 0.05 : 0) + ((o.level ?? 0) > 0 ? 0.1 : 0);
     if (score > best.score) {
       const { c } = openingSpan(o, w);
       const p: P2 = [a[0] + ((b[0] - a[0]) / L) * c, a[1] + ((b[1] - a[1]) / L) * c];
@@ -98,7 +101,7 @@ function valleyWindow(house: HouseDef, pl: Placement, valleyDeg: number) {
       const ang = Math.atan2(n[0] * vdir[1] - n[1] * vdir[0], n[0] * vdir[0] + n[1] * vdir[1]);
       const cl = Math.max(-0.61, Math.min(0.61, ang));
       const look: P2 = [n[0] * Math.cos(cl) - n[1] * Math.sin(cl), n[0] * Math.sin(cl) + n[1] * Math.cos(cl)];
-      best = { score, eye: [p[0] - n[0] * 0.8, p[1] - n[1] * 0.8], ref: o.ref ?? o.kind, look };
+      best = { score, eye: [p[0] - n[0] * 0.8, p[1] - n[1] * 0.8], ref: o.ref ?? o.kind, look, level: o.level ?? 0 };
     }
   }
   return best;
