@@ -55,6 +55,9 @@ export interface Sun {
 /** a separate building of the project (detached garage): its own placement and floor level */
 export interface AnnexState { placement: Placement; floorLevel: number | null }
 
+/** an extra building on the plot (shed, garage…), shared by every house project */
+export interface Outbuilding { id: string; kind: string; placement: Placement; floorLevel: number | null }
+
 /** per-house state: where each project stands on the plot */
 export interface ProjectState { placement: Placement; floorLevel: number | null; annexes?: Record<string, AnnexState> }
 
@@ -70,8 +73,10 @@ export interface AppState {
   floorLevel: number | null;
   /** the active project's separate buildings, by annex id (missing = default spot, auto level) */
   annexes: Record<string, AnnexState>;
-  /** which building the placement controls act on: 'main' or an annex id */
+  /** which building the placement controls act on: 'main', an annex id or an outbuilding id */
   target: string;
+  /** extra buildings on the plot (src/house/outbuildings.ts), shared by all projects */
+  outbuildings: Outbuilding[];
   sun: Sun;
   palette: Palette;
   garden: GardenArea[];
@@ -94,6 +99,9 @@ export interface AppState {
   addTree: (t: Tree) => void;
   removeSelected: () => void;
   toggleFenceEdge: (i: number) => void;
+  /** add an extra building of a catalog kind; it becomes the building the controls act on */
+  addOutbuilding: (kind: string, placement: Placement) => string;
+  removeOutbuilding: (id: string) => void;
 }
 
 /** persisted state migration — v1 (single house): everything belonged to Ambrozja 17 */
@@ -102,6 +110,7 @@ export function migrateState(state: unknown, version: number) {
   let out: Partial<AppState> = s;
   if (version < 2) out = { ...out, projectId: 'ambrozja17', projectState: {} };
   if (version < 3) out = { ...out, annexes: {}, target: 'main' };
+  if (version < 4) out = { ...out, outbuildings: [] };
   return out;
 }
 
@@ -118,6 +127,7 @@ export const useStore = create<AppState>()(
       floorLevel: null,
       annexes: {},
       target: 'main',
+      outbuildings: [],
       sun: { month: 6, day: 21, minutes: 17 * 60 },
       palette: DEFAULT_PALETTE,
       garden: [],
@@ -148,6 +158,15 @@ export const useStore = create<AppState>()(
         if (!id) return;
         set({ garden: get().garden.filter((g) => g.id !== id), trees: get().trees.filter((t) => t.id !== id), selected: null });
       },
+      addOutbuilding: (kind, placement) => {
+        const id = `ob-${uid()}`;
+        set({ outbuildings: [...get().outbuildings, { id, kind, placement, floorLevel: null }], target: id, selected: null });
+        return id;
+      },
+      removeOutbuilding: (id) => {
+        const s = get();
+        set({ outbuildings: s.outbuildings.filter((o) => o.id !== id), target: s.target === id ? 'main' : s.target });
+      },
       toggleFenceEdge: (i) => {
         const e = get().fenceEdges;
         set({ fenceEdges: e.includes(i) ? e.filter((x) => x !== i) : [...e, i] });
@@ -155,7 +174,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'house-placer-v1',
-      version: 3,
+      version: 4,
       migrate: (state, version) => migrateState(state, version) as AppState,
       partialize: (s) => ({
         tab: s.tab,
@@ -166,6 +185,7 @@ export const useStore = create<AppState>()(
         floorLevel: s.floorLevel,
         annexes: s.annexes,
         target: s.target,
+        outbuildings: s.outbuildings,
         sun: s.sun,
         palette: s.palette,
         garden: s.garden,
@@ -179,4 +199,4 @@ export const useStore = create<AppState>()(
   ),
 );
 
-export const PERSIST_KEYS = ['projectId', 'projectState', 'placement', 'floorLevel', 'annexes', 'sun', 'palette', 'garden', 'trees', 'fenceEdges', 'fenceHeight', 'buildingLine', 'layers'] as const;
+export const PERSIST_KEYS = ['projectId', 'projectState', 'placement', 'floorLevel', 'annexes', 'outbuildings', 'sun', 'palette', 'garden', 'trees', 'fenceEdges', 'fenceHeight', 'buildingLine', 'layers'] as const;

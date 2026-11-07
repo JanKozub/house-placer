@@ -119,19 +119,21 @@ function HousePlanOverlay() {
   );
 }
 
-/** house ↔ detached garage: shortest distance between the walls */
+/** house ↔ each separate building (detached garage, shed): shortest distance between the walls */
 function GapOverlay() {
   const d = useDerived();
   const mode = useStore((s) => s.layers.dimsMode ?? 'corners');
-  const g = d.gap;
-  if (!g || mode === 'off') return null;
-  const color = g.overlap ? '#dc2626' : '#7c3aed';
+  if (!d.gaps.length || mode === 'off') return null;
   return (
     <Overlay order={30}>
-      {!g.overlap && <Lines points={[v3(g.p), v3(g.q)]} color={color} width={2} />}
-      <Label at={[(g.p[0] + g.q[0]) / 2, (g.p[1] + g.q[1]) / 2]} className={`dim-label gap ${g.overlap ? 'fail' : ''}`}>
-        {g.overlap ? `dom i ${g.label.toLowerCase()} nachodzą na siebie` : `dom–${g.label.toLowerCase()}: ${f(g.d, 2)} m`}
-      </Label>
+      {d.gaps.map((g) => (
+        <group key={g.id}>
+          {!g.overlap && <Lines points={[v3(g.p), v3(g.q)]} color="#7c3aed" width={2} />}
+          <Label at={[(g.p[0] + g.q[0]) / 2, (g.p[1] + g.q[1]) / 2]} className={`dim-label gap ${g.overlap ? 'fail' : ''}`}>
+            {g.overlap ? `dom i ${g.label.toLowerCase()} nachodzą na siebie` : `dom–${g.label.toLowerCase()}: ${f(g.d, 2)} m`}
+          </Label>
+        </group>
+      ))}
     </Overlay>
   );
 }
@@ -144,7 +146,7 @@ function CornerOverlay() {
   const showLabels = mode !== 'off';
   const buildings = [
     { key: 'main', fp: d.footprint, pl, corners: d.corners, letter: (i: number) => cornerLabel(i) },
-    ...d.annexes.map((a) => ({ key: a.id, fp: a.footprint, pl: a.placement, corners: a.corners, letter: (i: number) => `${a.label.charAt(0).toUpperCase()}${i + 1}` })),
+    ...d.annexes.map((a) => ({ key: a.id, fp: a.footprint, pl: a.placement, corners: a.corners, letter: (i: number) => `${a.letter}${i + 1}` })),
   ];
   const all = buildings.flatMap((b) => b.corners);
   // corner letters, pushed slightly outward from each building's centre

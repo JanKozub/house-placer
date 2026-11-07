@@ -6,6 +6,7 @@ import type { HouseDef } from './house/types';
 import { toLocal } from './house/geometry';
 import { polygonGap, toSite, type P2, type Placement } from './placement/geom2d';
 import { annexState } from './house/annex';
+import { outbuildingKind } from './house/outbuildings';
 import { computeEarthwork, offsetPolygon } from './placement/earthwork';
 import { computeSetbacks, footprintSite, nearestCornerDistances, type CornerDistance } from './placement/setbacks';
 import { sunState } from './site/sun';
@@ -56,6 +57,7 @@ function useComputeDerived() {
   const placement = useStore((s) => s.placement);
   const floorLevelSetting = useStore((s) => s.floorLevel);
   const annexStore = useStore((s) => s.annexes);
+  const outbuildings = useStore((s) => s.outbuildings);
   const buildingLine = useStore((s) => s.buildingLine);
   const sun = useStore((s) => s.sun);
   const garden = useStore((s) => s.garden);
@@ -68,17 +70,31 @@ function useComputeDerived() {
       (house.annexes ?? []).map((a) => {
         const st = annexState(house, a, placement, annexStore);
         const g = buildingGeo(site, a.def, st.placement, st.floorLevel, buildingLine, []);
-        const prefix = a.label.charAt(0).toUpperCase();
-        return { ...g, corners: g.corners.map((c) => ({ ...c, label: `${prefix}${c.corner + 1}` })), id: a.id, label: a.label, def: a.def, placement: st.placement, floorLevel: st.floorLevel };
+        const letter = a.label.charAt(0).toUpperCase();
+        return { ...g, corners: g.corners.map((c) => ({ ...c, label: `${letter}${c.corner + 1}` })), id: a.id, label: a.label, letter, def: a.def, placement: st.placement, floorLevel: st.floorLevel, outbuilding: false };
       }),
     [site, house, placement, annexStore, buildingLine],
   );
+  // extra buildings on the plot (shared by all projects): W1, W2…; a second copy W2·1, W2·2…
+  const extra = useMemo(() => {
+    const seen = new Map<string, number>();
+    return outbuildings.flatMap((o) => {
+      const k = outbuildingKind(o.kind);
+      if (!k) return [];
+      const n = (seen.get(o.kind) ?? 0) + 1;
+      seen.set(o.kind, n);
+      const letter = n > 1 ? `${k.letter}${n}·` : k.letter;
+      const g = buildingGeo(site, k.def, o.placement, o.floorLevel, buildingLine, []);
+      return [{ ...g, corners: g.corners.map((c) => ({ ...c, label: `${letter}${c.corner + 1}` })), id: o.id, label: n > 1 ? `${k.label} ${n}` : k.label, letter, def: k.def, placement: o.placement, floorLevel: o.floorLevel, outbuilding: true }];
+    });
+  }, [site, outbuildings, buildingLine]);
   const geo = useMemo(() => {
-    const platforms = [main.platform, ...annexes.map((a) => a.platform)];
-    // house ↔ first separate building
-    const gap = annexes.length ? { ...polygonGap(main.footprint, annexes[0].footprint), label: annexes[0].label } : null;
-    return { ...main, annexes, platforms, gap };
-  }, [main, annexes]);
+    const all = [...annexes, ...extra];
+    const platforms = [main.platform, ...all.map((a) => a.platform)];
+    // house ↔ each separate building: shortest distance between the walls
+    const gaps = all.map((a) => ({ ...polygonGap(main.footprint, a.footprint), id: a.id, label: a.label }));
+    return { ...main, annexes: all, platforms, gaps };
+  }, [main, annexes, extra]);
   // the sun doesn't depend on the house: don't recompute it on every drag
   const sunS = useMemo(() => sunState(sun, site.meta.origin.lat, site.meta.origin.lon, site.trueNorth), [sun, site]);
   return useMemo(() => ({ ...geo, house, sun: sunS }), [geo, house, sunS]);

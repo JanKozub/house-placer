@@ -3,7 +3,8 @@ import { useDerived, useSite } from '../derived';
 import { DEFAULT_PALETTE, PERSIST_KEYS, useStore, type DimsMode, type Palette, type Tool } from '../store';
 import { roofTopAt } from '../house/roof';
 import { HOUSES } from '../house/projects';
-import { setBuildingFloor, setBuildingPlacement, useTarget } from '../house/annex';
+import { defaultOutbuildingPlacement, setBuildingFloor, setBuildingPlacement, useTarget } from '../house/annex';
+import { OUTBUILDINGS } from '../house/outbuildings';
 import type { Placement } from '../placement/geom2d';
 import { cornerLabel } from '../placement/setbacks';
 import { sunTimes } from '../site/sun';
@@ -117,8 +118,11 @@ export function PreviewPanel() {
         )}
         {d.annexes.map((a) => (
           <p key={a.id} className="hint">
-            {a.label} (osobny budynek): {f(a.def.width)} × {f(a.def.depth)} m · pow. {f(a.def.usableArea)} m² · wys. kalenicy {f(a.def.heightTotal)} m · posadzka {f(a.floorH)} m n.p.m.
-            {d.gap && <> · {d.gap.overlap ? 'nachodzi na dom' : `${f(d.gap.d, 2)} m od domu`}</>}
+            {a.label} ({a.outbuilding ? 'budynek dodatkowy' : 'osobny budynek'}): {f(a.def.width)} × {f(a.def.depth)} m · pow. {f(a.def.usableArea)} m² · wys. kalenicy {f(a.def.heightTotal)} m · posadzka {f(a.floorH)} m n.p.m.
+            {(() => {
+              const g = d.gaps.find((gg) => gg.id === a.id);
+              return g && <> · {g.overlap ? 'nachodzi na dom' : `${f(g.d, 2)} m od domu`}</>;
+            })()}
           </p>
         ))}
       </Section>
@@ -152,7 +156,7 @@ export function PlacementPanel() {
 
   const ew = tg.earthwork;
   const sb = d.setbacks;
-  const allOk = sb.ok && d.annexes.every((a) => a.setbacks.ok) && !d.gap?.overlap;
+  const allOk = sb.ok && d.annexes.every((a) => a.setbacks.ok) && !d.gaps.some((g) => g.overlap);
   const allInside = sb.insideParcel && d.annexes.every((a) => a.setbacks.insideParcel);
   const wallRows = [
     ...sb.walls.map((w) => ({ ...w, key: w.wallId, label: house.walls.find((ww) => ww.id === w.wallId)?.label ?? w.wallId })),
@@ -187,7 +191,7 @@ export function PlacementPanel() {
 
   return (
     <div className="panel">
-      <Section title="Położenie" right={<span className={`badge ${allOk ? 'ok' : 'fail'}`}>{allOk ? 'Odległości OK' : !allInside ? 'Poza działką' : d.gap?.overlap ? 'Budynki nachodzą' : 'Sprawdź odległości'}</span>}>
+      <Section title="Położenie" right={<span className={`badge ${allOk ? 'ok' : 'fail'}`}>{allOk ? 'Odległości OK' : !allInside ? 'Poza działką' : d.gaps.some((g) => g.overlap) ? 'Budynki nachodzą' : 'Sprawdź odległości'}</span>}>
         {several && (
           <div className="row">
             <span className="grow">Przesuwany budynek</span>
@@ -235,19 +239,22 @@ export function PlacementPanel() {
           Najbliższy punkt domu od granicy: {f(sb.minDistance)} m. Odległości mierzone są do granicy na wprost każdej ściany. Linie zabudowy sprawdź w MPZP / decyzji WZ i narysuj narzędziem <em>Linia zabudowy</em>.
           {sb.buildingLine && <> Linia zabudowy: {sb.buildingLine.ok ? 'zachowana' : 'PRZEKROCZONA'} ({f(sb.buildingLine.distance)} m).</>}
         </p>
-        {d.gap && (
-          <p className={`hint ${d.gap.overlap ? 'warn' : ''}`}>
-            Odstęp dom–{d.gap.label.toLowerCase()}: <b>{d.gap.overlap ? 'budynki nachodzą na siebie' : `${f(d.gap.d, 2)} m`}</b> (najbliższe ściany). Granice działki dotyczą też garażu; sprawdź, czy MPZP / WZ pozwala na budynek gospodarczy bliżej granicy.
+        {d.gaps.map((g) => (
+          <p key={g.id} className={`hint ${g.overlap ? 'warn' : ''}`}>
+            Odstęp dom–{g.label.toLowerCase()}: <b>{g.overlap ? 'budynki nachodzą na siebie' : `${f(g.d, 2)} m`}</b> (najbliższe ściany).
           </p>
+        ))}
+        {d.annexes.length > 0 && (
+          <p className="hint">Odległości od granic dotyczą też garażu i budynków dodatkowych; sprawdź, czy MPZP / WZ pozwala postawić budynek gospodarczy bliżej granicy.</p>
         )}
       </Section>
 
       <Section title={several ? 'Narożniki budynków i tarasu → najbliższa granica' : 'Narożniki domu i tarasu → najbliższa granica'}>
         <CornerTable />
-        <p className="hint">Odległość od każdego narożnika domu (A–{cornerLabel(house.outline.length - 1)}), narożnika tarasu (T){d.annexes.map((a) => <span key={a.id}>, narożników budynku „{a.label}” ({a.label.charAt(0).toUpperCase()}1–{a.label.charAt(0).toUpperCase()}{a.def.outline.length})</span>)} i narysowanych patio (P…) do najbliższej krawędzi działki{house.twoEdgeCorners.length > 0 && <> (dla {house.twoEdgeCorners.map(cornerLabel).join(' i ')} do dwóch najbliższych)</>} (numery 1–{site.parcel.length} przy krawędziach). Pomiary przechodzące przez dom są pomijane. Czerwone &lt; 3 m, pomarańczowe &lt; 4 m.</p>
+        <p className="hint">Odległość od każdego narożnika domu (A–{cornerLabel(house.outline.length - 1)}), narożnika tarasu (T){d.annexes.map((a) => <span key={a.id}>, narożników budynku „{a.label}” ({a.letter}1–{a.letter}{a.def.outline.length})</span>)} i narysowanych patio (P…) do najbliższej krawędzi działki{house.twoEdgeCorners.length > 0 && <> (dla {house.twoEdgeCorners.map(cornerLabel).join(' i ')} do dwóch najbliższych)</>} (numery 1–{site.parcel.length} przy krawędziach). Pomiary przechodzące przez dom są pomijane. Czerwone &lt; 3 m, pomarańczowe &lt; 4 m.</p>
       </Section>
 
-      <Section title={several ? `Poziom posadzki i roboty ziemne · ${t.id === 'main' ? 'dom' : t.annex!.label.toLowerCase()}` : 'Poziom posadzki i roboty ziemne'}>
+      <Section title={several ? `Poziom posadzki i roboty ziemne · ${t.id === 'main' ? 'dom' : t.label.toLowerCase()}` : 'Poziom posadzki i roboty ziemne'}>
         <div className="row">
           <label className="grow">±0,00 (m n.p.m.)
             <input type="number" step={0.05} value={tg.floorH.toFixed(2)} onChange={(e) => setFloor(+e.target.value)} />
@@ -266,6 +273,24 @@ export function PlacementPanel() {
           {several && <> Razem dom i {d.annexes.map((a) => a.label.toLowerCase()).join(', ')}: wykop {f(d.earthwork.cut + d.annexes.reduce((s2, a) => s2 + a.earthwork.cut, 0), 0)} m³, nasyp {f(d.earthwork.fill + d.annexes.reduce((s2, a) => s2 + a.earthwork.fill, 0), 0)} m³.</>}
         </p>
         <Profile />
+      </Section>
+
+      <Section title="Budynki dodatkowe">
+        <p className="hint">Wspólne dla wszystkich projektów domu. Dodany budynek przesuwasz, obracasz i poziomujesz jak dom (przełącznik „Przesuwany budynek” u góry albo przeciągnij go na planie).</p>
+        <div className="chips">
+          {OUTBUILDINGS.map((k) => (
+            <button key={k.kind} onClick={() => useStore.getState().addOutbuilding(k.kind, defaultOutbuildingPlacement(house, k.def, useStore.getState().placement))}>
+              + {k.label} ({f(k.def.width)} × {f(k.def.depth)} m)
+            </button>
+          ))}
+        </div>
+        {d.annexes.filter((a) => a.outbuilding).map((a) => (
+          <div key={a.id} className="row">
+            <span className="grow">{a.label} · {f(a.def.width)} × {f(a.def.depth)} m · posadzka {f(a.floorH)}</span>
+            <button className={target === a.id ? 'on' : ''} onClick={() => set({ target: a.id })}>Wybierz</button>
+            <button className="danger" onClick={() => useStore.getState().removeOutbuilding(a.id)}>Usuń</button>
+          </div>
+        ))}
       </Section>
 
       <Section title="Zagospodarowanie działki">

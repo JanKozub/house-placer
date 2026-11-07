@@ -8,6 +8,7 @@ import { ambrozja17Detached, detachedGarage } from './house/ambrozja17-detached'
 import { defaultAnnexPlacement } from './house/annex';
 import { carvedHeight } from './site/Terrain';
 import { argania2 } from './house/argania2';
+import { OUTBUILDINGS, wiataGaraz } from './house/outbuildings';
 import { HOUSE_LIST } from './house/projects';
 import { polygonAreaPlan, roofFaces, roofTopAt } from './house/roof';
 import { migrateState, useStore } from './store';
@@ -20,7 +21,7 @@ import { sunState, warsawDate } from './site/sun';
 const T30 = Math.tan(Math.PI / 6);
 
 // every project and every separate building in it (detached garages)
-const ALL_BUILDINGS = HOUSE_LIST.flatMap((h) => [h, ...(h.annexes ?? []).map((a) => a.def)]);
+const ALL_BUILDINGS = [...HOUSE_LIST.flatMap((h) => [h, ...(h.annexes ?? []).map((a) => a.def)]), ...OUTBUILDINGS.map((k) => k.def)];
 
 describe.each(ALL_BUILDINGS.map((h) => [h.name, h] as const))('house project %s', (_name, h) => {
   it('outline is clockwise, matches width × depth, and each wall is an outline edge', () => {
@@ -259,6 +260,51 @@ describe('Dom w Arganiach 2 (G2E)', () => {
     // the attic floor is drawn at +3.06
     parts.floor!.computeBoundingBox();
     expect(parts.floor!.boundingBox!.max.y).toBeCloseTo(3.065, 3);
+  });
+});
+
+describe('extra buildings: wiata + magazyn + garaż', () => {
+  const h = wiataGaraz;
+  it('12.11 × 7.10 m (4.50 + 3.51 + 4.10), 30° roof with the ridge at +5.40 (section A-A)', () => {
+    expect([h.width, h.depth]).toEqual([12.11, 7.1]);
+    expect(h.roof.pitchDeg).toBe(30);
+    expect(roofTopAt(h, 6, 3.55)).toBeCloseTo(5.4, 6);
+    expect(h.roof.chimneys[0].top).toBeCloseTo(5.9, 6); // 0.50 above the ridge
+    expect(h.rooms.reduce((s, r) => s + r.area, 0)).toBeCloseTo(77.6, 2);
+  });
+
+  it('open wiata sides build no wall but still count for setbacks, as open (4 m)', () => {
+    const open = h.walls.filter((w) => w.open).map((w) => w.id);
+    expect(open).toEqual(['west', 'frontOpen']);
+    // a closed copy builds more plaster than the one with the open wiata
+    const plaster = (d: typeof h) => buildHouse(d).plaster!.getAttribute('position').count;
+    expect(plaster({ ...h, walls: h.walls.map((w) => ({ ...w, open: false })) })).toBeGreaterThan(plaster(h));
+    const parcel: P2[] = [[-50, -50], [50, -50], [50, 50], [-50, 50]];
+    const sb = computeSetbacks(h, { x: 0, z: 0, bearing: 180, mirror: false }, parcel);
+    const byId = Object.fromEntries(sb.walls.map((w) => [w.wallId, w]));
+    expect(byId.west.required).toBe(4);
+    expect(byId.frontOpen.hasOpenings).toBe(true);
+    expect(byId.south.required).toBe(3); // the full south wall has no openings
+  });
+
+  it('are shared by all projects; adding selects it, removing hands control back to the house', () => {
+    const s = useStore.getState();
+    s.set({ projectId: 'ambrozja17', projectState: {}, outbuildings: [], target: 'main' });
+    const id = useStore.getState().addOutbuilding('wiata-garaz', { x: 10, z: 5, bearing: 90, mirror: false });
+    expect(useStore.getState().target).toBe(id);
+    useStore.getState().setProject('argania2');
+    expect(useStore.getState().outbuildings.map((o) => o.id)).toEqual([id]);
+    expect(useStore.getState().target).toBe('main');
+    useStore.getState().set({ target: id });
+    useStore.getState().removeOutbuilding(id);
+    expect(useStore.getState().outbuildings).toHaveLength(0);
+    expect(useStore.getState().target).toBe('main');
+  });
+
+  it('migrates v3 storage (no extra buildings)', () => {
+    const out = migrateState({ projectId: 'argania2', annexes: {}, target: 'main' }, 3) as { outbuildings: unknown[]; projectId: string };
+    expect(out.outbuildings).toEqual([]);
+    expect(out.projectId).toBe('argania2');
   });
 });
 

@@ -204,6 +204,7 @@ export function buildHouse(house: HouseDef): HouseParts {
   // ---------- exterior walls ----------
   const mergedGables = new Set<(typeof r.gables)[number]>();
   walls.forEach((w, i) => {
+    if (w.open) return; // open side (wiata): posts and screens come from `extras`
     const prev = walls[(i + walls.length - 1) % walls.length];
     const next = walls[(i + 1) % walls.length];
     const extA = isReflex(prev.a, w.a, w.b) ? t : 0;
@@ -322,7 +323,10 @@ export function buildHouse(house: HouseDef): HouseParts {
     for (let i = 0; i < g.attributes.normal.count; i++) g.attributes.normal.setXYZ(i, 0, 1, 0);
     B.add('floor', g.clone().translate(0, 0.005, 0));
     if (uf) B.add('interior', flat(withVoids(), house.ceilingHeight, false));
-    else {
+    else if (house.ceilingOutline) {
+      const cs = new THREE.Shape(house.ceilingOutline.map(([X, Y]) => new THREE.Vector2(...toLocal(house, X, Y))));
+      B.add('interior', flat(cs, house.ceilingHeight, false));
+    } else {
       const ceil = g.clone().translate(0, house.ceilingHeight, 0);
       flipWinding(ceil);
       for (let i = 0; i < ceil.attributes.normal.count; i++) ceil.attributes.normal.setXYZ(i, 0, -1, 0);

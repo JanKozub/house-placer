@@ -46,7 +46,8 @@ export function computeSetbacks(house: HouseDef, pl: Placement, parcel: P2[], bu
   const walls: WallSetback[] = house.walls.map((w) => {
     const a = toSite(toLocal(house, ...w.a), pl);
     const b = toSite(toLocal(house, ...w.b), pl);
-    const hasOpenings = house.openings.some((o) => o.wall === w.id);
+    // an open side (wiata) is treated like a wall with openings
+    const hasOpenings = !!w.open || house.openings.some((o) => o.wall === w.id);
     const required = hasOpenings ? LIMIT_WITH_OPENINGS : LIMIT_BLANK;
     const all = facingDistances(a, b, fp, parcel);
     const r = all[0] ?? (() => { const x = segToPolygon(a, b, parcel); return { d: x.d, p: x.p, q: x.q }; })();

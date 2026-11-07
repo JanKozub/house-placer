@@ -39,6 +39,8 @@ export interface WallEdge {
   label?: string;
   /** top of this wall above ±0.00 (default: house.wallTop) */
   top?: number;
+  /** open side (a wiata on posts): nothing is built, but it still counts for setbacks, as open */
+  open?: boolean;
 }
 
 export interface Slab { x0: number; x1: number; y0: number; y1: number; top: number }
@@ -108,7 +110,7 @@ export interface FacadeZone {
 }
 
 /** an extra box in plan coords (pergola beams, canopies, posts) */
-export interface ExtraBox { x0: number; x1: number; y0: number; y1: number; h0: number; h1: number; part: 'plaster' | 'accent' | 'wood' | 'frame' | 'trim' | 'soffit' }
+export interface ExtraBox { x0: number; x1: number; y0: number; y1: number; h0: number; h1: number; part: 'plaster' | 'accent' | 'wood' | 'frame' | 'trim' | 'soffit' | 'plinth' | 'paving' }
 
 export interface HouseView { at: Vec2 | 'valleyWindow'; h: number; look: Vec2 | 'valley'; label: string }
 
@@ -181,6 +183,8 @@ export interface HouseDef {
   /** rooms of the upper storey (info only; the plan view shows the ground floor) */
   upperRooms?: { name: string; area: number }[];
   roofWindows?: RoofWindow[];
+  /** ceiling over part of the outline only (a wiata open to the roof); default: the whole outline */
+  ceilingOutline?: Vec2[];
   facadeZones?: FacadeZone[];
   extras?: ExtraBox[];
 }

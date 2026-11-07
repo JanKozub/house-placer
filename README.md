@@ -59,6 +59,10 @@ If no imagery is available, the ground falls back to a synthetic field texture.
    Houses with a usable attic or a richer façade can also use: `Opening.level` (the storey an opening serves, e.g. attic windows; sets the eye height of views) and `Opening.shape: 'gable'` (glazing that follows the roof slopes), openings above the wall top inside that wall's gable, `upperFloor` (attic slab with voids), `upperRooms`, `roofWindows`, `facadeZones` (dark render band / wood cladding, cut around openings; colour "Tynk – pas ciemny") and `extras` (boxes for pergolas, canopies, posts).
 3. Run `npm test`. The generic checks run on every project: outline and walls agree, openings fit their walls, roof faces tile the roof outline without steps, and the ridge height matches the section.
 
+## Extra buildings
+
+Extra buildings on the plot (sheds, garages) are added in the placement tab, under "Budynki dodatkowe". They belong to the plot, not to a house project, so they stay where you put them when you switch houses. Each one is placed, rotated and levelled like the house: drag it on the plan, or pick it in the "Przesuwany budynek" switch. It gets its own setback rows, corner labels (W1, W2…) and a distance-to-house line. The catalog lives in `src/house/outbuildings.ts`: each entry is a full `HouseDef`. Sides marked `open: true` (a wiata on posts) build no wall but still count in setbacks.
+
 ## Data and accuracy
 
 - Ambrozja 17 is described in `src/house/ambrozja17.ts`, taken from the project's dimensioned
@@ -76,6 +80,7 @@ If no imagery is available, the ground falls back to a synthetic field texture.
   - Levels: ground −0.32, ceiling 2.68, knee wall 1.25, a 38° roof with the ridge at +7.98.
 
   Read off the elevations or assumed: the 0.80 m overhangs, the attic window sills, the glazed gable's sill (+3.20), chimney positions, the pergola and entrance-canopy heights, and the extent of the dark render and wood cladding. Interior partitions are approximate. The project card PDF is not in `docs/`: archon.pl only emails it after a form with personal data and consents.
+- The extra building "Wiata + magazyn + garaż" comes from the user's own plan and section A-A. It is 12.11 × 7.10 m: wiata 4.50, magazyn 3.51, garaż 4.10, with 24 cm walls. Walls stand at +2.80, the roof is 30° with the ridge at +5.40, and the chimney is 0.50 above the ridge. Those three values only fit if the roof surface at the wall face is +3.35, so the eave box closes the gap above the walls. Assumed: the east window (190/80 at +1.40), the overhangs, and the beam, shutter and oven sizes.
 - Dom Grela is described in `src/house/grela.ts`, taken from the TE-DE drawing set: ground-floor plan, section A-A and roof plan. It covers:
   - Main block 15.81 × 12.58 m and garage wing 6.69 × 10.98 m.
   - Covered terrace 6.56 × 2.86 with post S-1, and the entrance recessed 0.80 m.
