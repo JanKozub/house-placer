@@ -69,6 +69,14 @@ export function setBuildingFloor(house: HouseDef, id: string, floorLevel: number
   s.set({ annexes: { ...s.annexes, [id]: { ...cur, floorLevel } } });
 }
 
+/** the definition (plan, size) of one building: the house, a project annex or an extra building */
+export function buildingDef(house: HouseDef, id: string): HouseDef {
+  const annex = house.annexes?.find((a) => a.id === id);
+  if (annex) return annex.def;
+  const ob = useStore.getState().outbuildings.find((o) => o.id === id);
+  return (ob && outbuildingKind(ob.kind)?.def) ?? house;
+}
+
 /** current placement of one building, read outside React (event handlers) */
 export function buildingPlacement(house: HouseDef, id: string): Placement {
   const s = useStore.getState();

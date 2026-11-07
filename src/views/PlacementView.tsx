@@ -7,7 +7,7 @@ import { create } from 'zustand';
 import { useDerived, useSite } from '../derived';
 import { uid, useStore, type GardenKind, type Tool, type TreeKind } from '../store';
 import { houseById, useHouse } from '../house/projects';
-import { buildingPlacement, setBuildingPlacement, useTarget } from '../house/annex';
+import { buildingDef, buildingPlacement, setBuildingPlacement, useTarget } from '../house/annex';
 import type { HouseDef } from '../house/types';
 import { toLocal } from '../house/geometry';
 import { centroid, closestOnSegment, pointInPolygon, toSite, type P2, type Placement } from '../placement/geom2d';
@@ -386,7 +386,7 @@ function Interaction({ draft, setDraft, setCursor }: { draft: P2[]; setDraft: (d
     const p = pt(e);
     const house = houseById(s.projectId);
     const tpl = buildingPlacement(house, s.target);
-    const tdef = house.annexes?.find((a) => a.id === s.target)?.def ?? house;
+    const tdef = buildingDef(house, s.target);
     const handle = handlePos(tdef, tpl);
     // separate buildings (smaller) are hit-tested before the house
     const hit = [...d.annexes.map((a) => ({ id: a.id, poly: a.platform.polygon })), { id: 'main', poly: d.platform.polygon }].find((b) => pointInPolygon(p, b.poly));

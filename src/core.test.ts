@@ -5,7 +5,7 @@ import { buildHouse, footprintLocal, gableEaveUnder, gableOfWall, openingPolygon
 import { ambrozja17 } from './house/ambrozja17';
 import { grela } from './house/grela';
 import { ambrozja17Detached, detachedGarage } from './house/ambrozja17-detached';
-import { defaultAnnexPlacement } from './house/annex';
+import { buildingDef, defaultAnnexPlacement } from './house/annex';
 import { carvedHeight } from './site/Terrain';
 import { argania2 } from './house/argania2';
 import { OUTBUILDINGS, wiataGaraz } from './house/outbuildings';
@@ -299,6 +299,15 @@ describe('extra buildings: wiata + magazyn + garaż', () => {
     useStore.getState().removeOutbuilding(id);
     expect(useStore.getState().outbuildings).toHaveLength(0);
     expect(useStore.getState().target).toBe('main');
+  });
+
+  it('resolves an extra building\'s own size for the plan tools (rotate handle)', () => {
+    useStore.getState().set({ projectId: 'ambrozja17', outbuildings: [] });
+    const id = useStore.getState().addOutbuilding('wiata-garaz', { x: 0, z: 0, bearing: 0, mirror: false });
+    expect(buildingDef(ambrozja17, id)).toBe(wiataGaraz);
+    expect(buildingDef(ambrozja17Detached, 'garage')).toBe(detachedGarage);
+    expect(buildingDef(ambrozja17, 'main')).toBe(ambrozja17);
+    useStore.getState().removeOutbuilding(id);
   });
 
   it('migrates v3 storage (no extra buildings)', () => {
