@@ -58,9 +58,9 @@ export function App() {
             </select>{' '}
             <span>na działce nr {site.meta.parcelNumber} · {site.meta.region}, gm. {site.meta.commune}</span>
           </div>
-          <nav className="tabs">
-            <button className={tab === 'preview' ? 'on' : ''} onClick={() => switchTab('preview')}>Podgląd 3D</button>
-            <button className={tab === 'placement' ? 'on' : ''} onClick={() => switchTab('placement')}>Ustawienie na działce</button>
+          <nav className="tabs" aria-label="Widok">
+            <button className={tab === 'preview' ? 'on' : ''} aria-pressed={tab === 'preview'} onClick={() => switchTab('preview')}>Podgląd 3D</button>
+            <button className={tab === 'placement' ? 'on' : ''} aria-pressed={tab === 'placement'} onClick={() => switchTab('placement')}>Ustawienie na działce</button>
           </nav>
         </header>
         <main className="main">

@@ -197,16 +197,16 @@ export function PreviewOverlay() {
 
   return (
     <>
-      <div className="view-toolbar">
+      <div className="view-toolbar" role="toolbar" aria-label="Widoki kamery">
         {(['street', 'entrance', 'side', 'garden', 'aerial'] as ViewPreset[]).map((p) => (
-          <button key={p} className={preset === p ? 'on' : ''} onClick={() => go(p)}>
+          <button key={p} className={preset === p ? 'on' : ''} aria-pressed={preset === p} onClick={() => go(p)}>
             {{ street: 'Od drogi', entrance: 'Wejście', side: 'Z boku', garden: 'Ogród', aerial: 'Z lotu ptaka' }[p as 'street']}
           </button>
         ))}
         <span className="sep" />
         <span className="toolbar-label">Widok z domu:</span>
         {HOUSE_VIEW_KEYS.map((p) => (
-          <button key={p} className={preset === p ? 'on' : ''} onClick={() => go(p)}>{house.views[p].label}</button>
+          <button key={p} className={preset === p ? 'on' : ''} aria-pressed={preset === p} onClick={() => go(p)}>{house.views[p].label}</button>
         ))}
         <span className="sep" />
         {!photo ? (
@@ -218,7 +218,7 @@ export function PreviewOverlay() {
         )}
       </div>
 
-      <div className="view-hud">
+      <div className="view-hud" aria-live="polite">
         Kierunek widoku: <span ref={(el) => { headingRef.current = el; }}>—</span>
         {valley !== null && <> · dolina: {f(trueBearing(site, pl.x, pl.z, valley), 0)}° ({compassPl(trueBearing(site, pl.x, pl.z, valley))})</>}
         {preset === 'valley' && valley !== null && <> · okno: {valleyWindow(house, pl, valley).ref}</>}
@@ -232,7 +232,7 @@ export function PreviewOverlay() {
       </div>
       <Attribution />
       {photo && (
-        <div className="photo-hud">
+        <div className="photo-hud" role="status" aria-live="polite">
           {progress?.done ? (
             <>
               <span>Gotowe · próbek: {progress.samples}</span>

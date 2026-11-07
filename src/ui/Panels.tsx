@@ -64,13 +64,13 @@ export function PreviewPanel() {
     <div className="panel">
       <Section title="Słońce i pora dnia" right={<small>{site.meta.region}, {f(site.meta.origin.lat, 4)}°N</small>}>
         <div className="row">
-          <select value={sun.month} onChange={(e) => setSun({ month: +e.target.value })}>
+          <select aria-label="Miesiąc" value={sun.month} onChange={(e) => setSun({ month: +e.target.value })}>
             {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
           </select>
-          <input type="number" min={1} max={31} value={sun.day} onChange={(e) => setSun({ day: Math.max(1, Math.min(31, +e.target.value)) })} style={{ width: 56 }} />
+          <input type="number" aria-label="Dzień miesiąca" min={1} max={31} value={sun.day} onChange={(e) => setSun({ day: Math.max(1, Math.min(31, +e.target.value)) })} style={{ width: 56 }} />
           <strong className="time">{fmtTime(sun.minutes)}</strong>
         </div>
-        <input type="range" min={0} max={24 * 60 - 1} step={5} value={sun.minutes} onChange={(e) => setSun({ minutes: +e.target.value })} />
+        <input type="range" aria-label="Godzina" aria-valuetext={fmtTime(sun.minutes)} min={0} max={24 * 60 - 1} step={5} value={sun.minutes} onChange={(e) => setSun({ minutes: +e.target.value })} />
         <div className="hint">
           Wschód {fmtTime(times.sunrise)} · górowanie {fmtTime(times.noon)} · zachód {fmtTime(times.sunset)} · słońce {f((d.sun.altitude * 180 / Math.PI), 0)}° nad horyzontem, azymut {f(d.sun.azimuthDeg, 0)}°
         </div>
@@ -195,9 +195,9 @@ export function PlacementPanel() {
         {several && (
           <div className="row">
             <span className="grow">Przesuwany budynek</span>
-            <div className="seg">
+            <div className="seg" role="group" aria-label="Przesuwany budynek">
               {[{ id: 'main', label: 'Dom' }, ...d.annexes.map((a) => ({ id: a.id, label: a.label }))].map((b) => (
-                <button key={b.id} className={target === b.id ? 'on' : ''} onClick={() => set({ target: b.id })}>{b.label}</button>
+                <button key={b.id} className={target === b.id ? 'on' : ''} aria-pressed={target === b.id} onClick={() => set({ target: b.id })}>{b.label}</button>
               ))}
             </div>
           </div>
@@ -207,11 +207,11 @@ export function PlacementPanel() {
           <label>Południe (m)<input type="number" step={0.1} value={pl.z.toFixed(2)} onChange={(e) => setPlacement({ z: +e.target.value })} /></label>
           <label>Front na azymut (°)<input type="number" step={1} value={pl.bearing.toFixed(1)} onChange={(e) => setPlacement({ bearing: ((+e.target.value % 360) + 360) % 360 })} /></label>
         </div>
-        <input type="range" min={0} max={359.5} step={0.5} value={pl.bearing} onChange={(e) => setPlacement({ bearing: +e.target.value })} />
+        <input type="range" aria-label="Front na azymut" min={0} max={359.5} step={0.5} value={pl.bearing} onChange={(e) => setPlacement({ bearing: +e.target.value })} />
         <div className="chips">
-          <button onClick={() => setPlacement({ bearing: (pl.bearing + 270) % 360 })}>⟲ 90°</button>
-          <button onClick={() => setPlacement({ bearing: (pl.bearing + 90) % 360 })}>⟳ 90°</button>
-          <button className={pl.mirror ? 'on' : ''} onClick={() => setPlacement({ mirror: !pl.mirror })}>⇋ Odbicie lustrzane</button>
+          <button aria-label="Obróć w lewo o 90°" onClick={() => setPlacement({ bearing: (pl.bearing + 270) % 360 })}><span aria-hidden="true">⟲</span> 90°</button>
+          <button aria-label="Obróć w prawo o 90°" onClick={() => setPlacement({ bearing: (pl.bearing + 90) % 360 })}><span aria-hidden="true">⟳</span> 90°</button>
+          <button className={pl.mirror ? 'on' : ''} aria-pressed={pl.mirror} onClick={() => setPlacement({ mirror: !pl.mirror })}><span aria-hidden="true">⇋</span> Odbicie lustrzane</button>
           <button onClick={center}>Wyśrodkuj na działce</button>
           {nearestRoadBearing(site.parcel, pl) !== null && (
             <button onClick={() => setPlacement({ bearing: nearestRoadBearing(site.parcel, pl)! })}>Frontem do najbliższej granicy</button>
@@ -259,10 +259,10 @@ export function PlacementPanel() {
           <label className="grow">±0,00 (m n.p.m.)
             <input type="number" step={0.05} value={tg.floorH.toFixed(2)} onChange={(e) => setFloor(+e.target.value)} />
           </label>
-          <button className={floorLevel === null ? 'on' : ''} onClick={() => setFloor(null)}>Auto (bilans mas)</button>
+          <button className={floorLevel === null ? 'on' : ''} aria-pressed={floorLevel === null} onClick={() => setFloor(null)}>Auto (bilans mas)</button>
           <button onClick={() => setFloor(Math.round((ew.terrainMax + 0.3) * 100) / 100)}>Najwyższy + 0,30</button>
         </div>
-        <input type="range" min={(ew.terrainMin - 1).toFixed(2)} max={(ew.terrainMax + 1.5).toFixed(2)} step={0.05} value={tg.floorH} onChange={(e) => setFloor(+e.target.value)} />
+        <input type="range" aria-label="Poziom ±0,00" min={(ew.terrainMin - 1).toFixed(2)} max={(ew.terrainMax + 1.5).toFixed(2)} step={0.05} value={tg.floorH} onChange={(e) => setFloor(+e.target.value)} />
         <div className="stats">
           <div><b>{f((ew.terrainMax - ew.terrainMin), 2)} m</b><span>spadek pod {t.id === 'main' ? 'domem' : 'garażem'}</span></div>
           <div><b>{f(ew.cut, 0)} m³</b><span>wykop</span></div>
@@ -287,16 +287,16 @@ export function PlacementPanel() {
         {d.annexes.filter((a) => a.outbuilding).map((a) => (
           <div key={a.id} className="row">
             <span className="grow">{a.label} · {f(a.def.width)} × {f(a.def.depth)} m · posadzka {f(a.floorH)}</span>
-            <button className={target === a.id ? 'on' : ''} onClick={() => set({ target: a.id })}>Wybierz</button>
+            <button className={target === a.id ? 'on' : ''} aria-pressed={target === a.id} onClick={() => set({ target: a.id })}>Wybierz</button>
             <button className="danger" onClick={() => useStore.getState().removeOutbuilding(a.id)}>Usuń</button>
           </div>
         ))}
       </Section>
 
       <Section title="Zagospodarowanie działki">
-        <div className="tools">
+        <div className="tools" role="group" aria-label="Narzędzia">
           {tools.map(([t, label]) => (
-            <button key={t} className={tool === t ? 'on' : ''} onClick={() => set({ tool: t, selected: null })}>{label}</button>
+            <button key={t} className={tool === t ? 'on' : ''} aria-pressed={tool === t} onClick={() => set({ tool: t, selected: null })}>{label}</button>
           ))}
         </div>
         <div className="row">
@@ -321,9 +321,9 @@ export function PlacementPanel() {
         <Toggle label="Rzut domu (pomieszczenia, otwory)" value={layers.plan} onChange={(v) => setLayers({ plan: v })} />
         <div className="row">
           <span className="grow">Wymiary na planie</span>
-          <div className="seg">
+          <div className="seg" role="group" aria-label="Wymiary na planie">
             {([['corners', 'Narożniki'], ['walls', 'Ściany (WT)'], ['off', 'Brak']] as [DimsMode, string][]).map(([m, l]) => (
-              <button key={m} className={(layers.dimsMode ?? 'corners') === m ? 'on' : ''} onClick={() => setLayers({ dimsMode: m })}>{l}</button>
+              <button key={m} className={(layers.dimsMode ?? 'corners') === m ? 'on' : ''} aria-pressed={(layers.dimsMode ?? 'corners') === m} onClick={() => setLayers({ dimsMode: m })}>{l}</button>
             ))}
           </div>
         </div>
