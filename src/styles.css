@@ -63,6 +63,14 @@ code { background: var(--line-soft); padding: 1px 4px; border-radius: 4px; }
 .panel-section { padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
 .panel-section header { display: flex; align-items: baseline; justify-content: space-between; }
 .panel-section h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.panel-section.collapsible header { align-items: center; }
+.section-toggle { display: flex; align-items: center; gap: 6px; border: none; background: none; padding: 0; min-height: var(--tap); flex: 1; text-align: left; border-radius: 4px; }
+.section-toggle:hover, .section-toggle:active { background: none; }
+.section-toggle:hover h3 { color: var(--ink); }
+.section-toggle .chevron { color: var(--muted); flex: none; transition: transform var(--ease); }
+.panel-section.open .section-toggle .chevron { transform: rotate(90deg); }
+.section-body { display: flex; flex-direction: column; gap: 8px; }
+.section-body[hidden] { display: none; }
 .row { display: flex; gap: 6px; align-items: center; }
 .row .grow { flex: 1; }
 .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -111,7 +119,7 @@ code { background: var(--line-soft); padding: 1px 4px; border-radius: 4px; }
 .tool-hint { position: absolute; bottom: 26px; left: 10px; right: 10px; text-align: center; color: #fff; background: var(--hud); padding: 6px 10px; border-radius: 6px; font-size: 12px; pointer-events: none; }
 .compass { position: absolute; top: 10px; right: 10px; background: rgba(255, 255, 255, 0.9); padding: 4px 8px; border-radius: 6px; font-weight: 700; }
 
-.map-label, .room-label, .dim-label, .edge-label, .nb-label, .parcel-label, .front-label, .handle-label { white-space: nowrap; user-select: none; }
+.map-label, .room-label, .dim-label, .edge-label, .nb-label, .front-label, .handle-label { white-space: nowrap; user-select: none; }
 .room-label { font-size: 10px; color: #374151; text-align: center; line-height: 1.1; }
 .room-label small { color: #6b7280; }
 .dim-label { font-size: 11px; font-weight: 700; padding: 1px 5px; border-radius: 4px; background: #fff; border: 1.5px solid; }
@@ -123,7 +131,6 @@ code { background: var(--line-soft); padding: 1px 4px; border-radius: 4px; }
 .dim-label.other { color: #334155; border-color: #94a3b8; font-weight: 600; font-size: 10px; background: rgba(255, 255, 255, 0.9); }
 .edge-label { font-size: 10px; color: #fde68a; text-shadow: 0 0 3px #000, 0 0 2px #000; }
 .nb-label { font-size: 10px; color: rgba(255, 255, 255, 0.8); text-shadow: 0 0 3px #000; }
-.parcel-label { font-size: 13px; font-weight: 700; color: #fde047; text-shadow: 0 0 4px #000, 0 0 2px #000; transform: translateY(60px); }
 .front-label { font-size: 10px; color: #1f2a37; background: rgba(255, 255, 255, 0.8); padding: 0 4px; border-radius: 3px; }
 .handle-label { color: #fff; font-size: 14px; font-weight: 700; }
 

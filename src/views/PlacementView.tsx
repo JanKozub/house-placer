@@ -268,7 +268,6 @@ function SiteOverlay() {
           </group>
         );
       })}
-      <Label at={centroid(P)} className="parcel-label">dz. {site.meta.parcelNumber}</Label>
     </Overlay>
   );
 }

@@ -1,4 +1,4 @@
-import { useDeferredValue, useRef } from 'react';
+import { useDeferredValue, useId, useRef, useState } from 'react';
 import { useDerived, useSite } from '../derived';
 import { DEFAULT_PALETTE, PERSIST_KEYS, useStore, type DimsMode, type Palette, type Tool } from '../store';
 import { roofTopAt } from '../house/roof';
@@ -17,14 +17,30 @@ const KIND_NAMES: Record<GardenKind, string> = { driveway: 'podjazd', path: 'śc
 
 const fmtTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(Math.round(m % 60)).padStart(2, '0')}`;
 const MONTHS = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'];
-function Section({ title, children, right }: { title: string; children: React.ReactNode; right?: React.ReactNode }) {
+function Section({ title, children, right, collapsible = false, defaultOpen = true }: { title: string; children: React.ReactNode; right?: React.ReactNode; collapsible?: boolean; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const bodyId = useId();
+  if (!collapsible) {
+    return (
+      <section className="panel-section">
+        <header>
+          <h3>{title}</h3>
+          {right}
+        </header>
+        {children}
+      </section>
+    );
+  }
   return (
-    <section className="panel-section">
+    <section className={`panel-section collapsible ${open ? 'open' : ''}`}>
       <header>
-        <h3>{title}</h3>
+        <button className="section-toggle" aria-expanded={open} aria-controls={bodyId} onClick={() => setOpen(!open)}>
+          <svg className="chevron" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <h3>{title}</h3>
+        </button>
         {right}
       </header>
-      {children}
+      <div id={bodyId} hidden={!open} className="section-body">{children}</div>
     </section>
   );
 }
@@ -219,7 +235,16 @@ export function PlacementPanel() {
         </div>
       </Section>
 
-      <Section title="Odległości od granic (WT §12)">
+      <Section
+        title="Odległości od granic (WT §12)"
+        collapsible
+        defaultOpen={false}
+        right={(() => {
+          // closest wall to its limit, so a problem shows while the list is folded
+          const worst = [...wallRows].sort((a, b) => a.distance - a.required - (b.distance - b.required))[0];
+          return worst && <span className={`badge ${worst.status === 'ok' ? 'ok' : 'fail'}`} title={worst.label}>min {f(Math.max(0, worst.distance), 2)} m</span>;
+        })()}
+      >
         <table className="setbacks">
           <tbody>
             {wallRows
@@ -235,23 +260,18 @@ export function PlacementPanel() {
               ))}
           </tbody>
         </table>
-        <p className="hint">
-          Najbliższy punkt domu od granicy: {f(sb.minDistance)} m. Odległości mierzone są do granicy na wprost każdej ściany. Linie zabudowy sprawdź w MPZP / decyzji WZ i narysuj narzędziem <em>Linia zabudowy</em>.
-          {sb.buildingLine && <> Linia zabudowy: {sb.buildingLine.ok ? 'zachowana' : 'PRZEKROCZONA'} ({f(sb.buildingLine.distance)} m).</>}
-        </p>
+        {sb.buildingLine && (
+          <p className={`hint ${sb.buildingLine.ok ? '' : 'warn'}`}>Linia zabudowy: {sb.buildingLine.ok ? 'zachowana' : 'PRZEKROCZONA'} ({f(sb.buildingLine.distance)} m).</p>
+        )}
         {d.gaps.map((g) => (
           <p key={g.id} className={`hint ${g.overlap ? 'warn' : ''}`}>
             Odstęp dom–{g.label.toLowerCase()}: <b>{g.overlap ? 'budynki nachodzą na siebie' : `${f(g.d, 2)} m`}</b> (najbliższe ściany).
           </p>
         ))}
-        {d.annexes.length > 0 && (
-          <p className="hint">Odległości od granic dotyczą też garażu i budynków dodatkowych; sprawdź, czy MPZP / WZ pozwala postawić budynek gospodarczy bliżej granicy.</p>
-        )}
       </Section>
 
       <Section title={several ? 'Narożniki budynków i tarasu → najbliższa granica' : 'Narożniki domu i tarasu → najbliższa granica'}>
         <CornerTable />
-        <p className="hint">Odległość od każdego narożnika domu (A–{cornerLabel(house.outline.length - 1)}), narożnika tarasu (T){d.annexes.map((a) => <span key={a.id}>, narożników budynku „{a.label}” ({a.letter}1–{a.letter}{a.def.outline.length})</span>)} i narysowanych patio (P…) do najbliższej krawędzi działki{house.twoEdgeCorners.length > 0 && <> (dla {house.twoEdgeCorners.map(cornerLabel).join(' i ')} do dwóch najbliższych)</>} (numery 1–{site.parcel.length} przy krawędziach). Pomiary przechodzące przez dom są pomijane. Czerwone &lt; 3 m, pomarańczowe &lt; 4 m.</p>
       </Section>
 
       <Section title={several ? `Poziom posadzki i roboty ziemne · ${t.id === 'main' ? 'dom' : t.label.toLowerCase()}` : 'Poziom posadzki i roboty ziemne'}>
@@ -269,14 +289,13 @@ export function PlacementPanel() {
           <div><b>{f(ew.fill, 0)} m³</b><span>nasyp</span></div>
           <div><b>{f((tg.floorH - ew.terrainMin), 2)} m</b><span>posadzka nad najniższym pkt</span></div>
         </div>
-        <p className="hint">Teren {f(ew.terrainMin)}–{f(ew.terrainMax)} m n.p.m. (GUGiK NMT 1 m). Poziom auto ±0,00 = {f(tg.autoFloor)}. Platforma na ±0,00 − {f(t.def.plinth)} m, skarpy 1:2. Roboty ziemne liczone tylko dla platformy (bez wykopów pod fundamenty).
-          {several && <> Razem dom i {d.annexes.map((a) => a.label.toLowerCase()).join(', ')}: wykop {f(d.earthwork.cut + d.annexes.reduce((s2, a) => s2 + a.earthwork.cut, 0), 0)} m³, nasyp {f(d.earthwork.fill + d.annexes.reduce((s2, a) => s2 + a.earthwork.fill, 0), 0)} m³.</>}
-        </p>
+        {several && (
+          <p className="hint">Razem dom i {d.annexes.map((a) => a.label.toLowerCase()).join(', ')}: wykop {f(d.earthwork.cut + d.annexes.reduce((s2, a) => s2 + a.earthwork.cut, 0), 0)} m³, nasyp {f(d.earthwork.fill + d.annexes.reduce((s2, a) => s2 + a.earthwork.fill, 0), 0)} m³.</p>
+        )}
         <Profile />
       </Section>
 
       <Section title="Budynki dodatkowe">
-        <p className="hint">Wspólne dla wszystkich projektów domu. Dodany budynek przesuwasz, obracasz i poziomujesz jak dom (przełącznik „Przesuwany budynek” u góry albo przeciągnij go na planie).</p>
         <div className="chips">
           {OUTBUILDINGS.map((k) => (
             <button key={k.kind} onClick={() => useStore.getState().addOutbuilding(k.kind, defaultOutbuildingPlacement(house, k.def, useStore.getState().placement))}>
