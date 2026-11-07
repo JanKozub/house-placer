@@ -7,6 +7,7 @@ import { Viewport } from './views/Viewport';
 import { PlacementPanel, PreviewPanel } from './ui/Panels';
 import { HOUSE_LIST, useHouse } from './house/projects';
 import { usePreviewUi } from './views/PreviewView';
+import { OutbuildingBar } from './ui/OutbuildingBar';
 
 export function App() {
   const [site, setSite] = useState<Site | null>(null);
@@ -55,8 +56,8 @@ export function App() {
               {HOUSE_LIST.map((h) => (
                 <option key={h.id} value={h.id}>{h.name} ({h.code})</option>
               ))}
-            </select>{' '}
-            <span>na działce nr {site.meta.parcelNumber} · {site.meta.region}, gm. {site.meta.commune}</span>
+            </select>
+            <OutbuildingBar />
           </div>
           <nav className="tabs" aria-label="Widok">
             <button className={tab === 'preview' ? 'on' : ''} aria-pressed={tab === 'preview'} onClick={() => switchTab('preview')}>Podgląd 3D</button>

@@ -3,8 +3,7 @@ import { useDerived, useSite } from '../derived';
 import { DEFAULT_PALETTE, PERSIST_KEYS, useStore, type DimsMode, type Palette, type Tool } from '../store';
 import { roofTopAt } from '../house/roof';
 import { HOUSES } from '../house/projects';
-import { defaultOutbuildingPlacement, setBuildingFloor, setBuildingPlacement, useTarget } from '../house/annex';
-import { OUTBUILDINGS } from '../house/outbuildings';
+import { setBuildingFloor, setBuildingPlacement, useTarget } from '../house/annex';
 import type { Placement } from '../placement/geom2d';
 import { cornerLabel } from '../placement/setbacks';
 import { sunTimes } from '../site/sun';
@@ -270,7 +269,18 @@ export function PlacementPanel() {
         ))}
       </Section>
 
-      <Section title={several ? 'Narożniki budynków i tarasu → najbliższa granica' : 'Narożniki domu i tarasu → najbliższa granica'}>
+      <Section
+        title={several ? 'Narożniki budynków i tarasu → najbliższa granica' : 'Narożniki domu i tarasu → najbliższa granica'}
+        collapsible
+        defaultOpen={false}
+        right={(() => {
+          // closest corner, so a problem shows while the list is folded
+          const all = [...d.corners, ...d.annexes.flatMap((a) => a.corners)];
+          if (!all.length) return null;
+          const worst = all.reduce((m, c) => (c.d < m.d ? c : m));
+          return <span className={`badge ${worst.d < 3 ? 'fail' : worst.d < 4 ? 'warn' : 'ok'}`} title={`Narożnik ${worst.label}`}>min {f(worst.d, 2)} m</span>;
+        })()}
+      >
         <CornerTable />
       </Section>
 
@@ -293,23 +303,6 @@ export function PlacementPanel() {
           <p className="hint">Razem dom i {d.annexes.map((a) => a.label.toLowerCase()).join(', ')}: wykop {f(d.earthwork.cut + d.annexes.reduce((s2, a) => s2 + a.earthwork.cut, 0), 0)} m³, nasyp {f(d.earthwork.fill + d.annexes.reduce((s2, a) => s2 + a.earthwork.fill, 0), 0)} m³.</p>
         )}
         <Profile />
-      </Section>
-
-      <Section title="Budynki dodatkowe">
-        <div className="chips">
-          {OUTBUILDINGS.map((k) => (
-            <button key={k.kind} onClick={() => useStore.getState().addOutbuilding(k.kind, defaultOutbuildingPlacement(house, k.def, useStore.getState().placement))}>
-              + {k.label} ({f(k.def.width)} × {f(k.def.depth)} m)
-            </button>
-          ))}
-        </div>
-        {d.annexes.filter((a) => a.outbuilding).map((a) => (
-          <div key={a.id} className="row">
-            <span className="grow">{a.label} · {f(a.def.width)} × {f(a.def.depth)} m · posadzka {f(a.floorH)}</span>
-            <button className={target === a.id ? 'on' : ''} aria-pressed={target === a.id} onClick={() => set({ target: a.id })}>Wybierz</button>
-            <button className="danger" onClick={() => useStore.getState().removeOutbuilding(a.id)}>Usuń</button>
-          </div>
-        ))}
       </Section>
 
       <Section title="Zagospodarowanie działki">
