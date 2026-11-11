@@ -32,6 +32,7 @@ button:hover { border-color: var(--line-strong); background-color: var(--surface
 button:active { background-color: var(--line-soft); }
 button.on, button.on:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
 button.primary:hover, a.btn.primary:hover { filter: brightness(1.08); }
+button:disabled, button:disabled:hover { opacity: 0.45; cursor: default; filter: none; }
 /* one visible focus ring for every control, only for keyboard users */
 :where(button, a, input, select, label.toggle):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 :where(input, select):focus-visible { outline-offset: 0; }

@@ -11,7 +11,7 @@ import type { HouseDef } from './types';
 
 export const HOUSE_LIST: HouseDef[] = [ambrozja17, ambrozja17Detached, grela, argania2];
 export const HOUSES: Record<string, HouseDef> = Object.fromEntries(HOUSE_LIST.map((h) => [h.id, h]));
-export const DEFAULT_HOUSE_ID = ambrozja17.id;
+export const DEFAULT_HOUSE_ID = argania2.id;
 
 export const houseById = (id: string | undefined): HouseDef => HOUSES[id ?? ''] ?? HOUSES[DEFAULT_HOUSE_ID];
 

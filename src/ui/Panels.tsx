@@ -5,6 +5,7 @@ import { roofTopAt } from '../house/roof';
 import { HOUSES } from '../house/projects';
 import { setBuildingFloor, setBuildingPlacement, useTarget } from '../house/annex';
 import type { Placement } from '../placement/geom2d';
+import { isPztPlacement, PZT } from '../site/sitePlan';
 import { cornerLabel } from '../placement/setbacks';
 import { sunTimes } from '../site/sun';
 import { carvedHeight } from '../site/Terrain';
@@ -230,6 +231,16 @@ export function PlacementPanel() {
           <button onClick={center}>Wyśrodkuj na działce</button>
           {nearestRoadBearing(site.parcel, pl) !== null && (
             <button onClick={() => setPlacement({ bearing: nearestRoadBearing(site.parcel, pl)! })}>Frontem do najbliższej granicy</button>
+          )}
+          {house.id === PZT.projectId && t.id === 'main' && (
+            <button
+              className="primary"
+              disabled={isPztPlacement(useStore.getState().placement, useStore.getState().floorLevel)}
+              title={`Położenie i poziom ±0,00 = ${f(PZT.floorLevel)} m n.p.m. z ${PZT.source}`}
+              onClick={() => set({ placement: { ...PZT.placement }, floorLevel: PZT.floorLevel })}
+            >
+              Ustaw wg PZT
+            </button>
           )}
         </div>
       </Section>

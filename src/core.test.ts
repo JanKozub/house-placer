@@ -8,11 +8,13 @@ import { ambrozja17Detached, detachedGarage } from './house/ambrozja17-detached'
 import { buildingDef, defaultAnnexPlacement } from './house/annex';
 import { carvedHeight } from './site/Terrain';
 import { argania2 } from './house/argania2';
+import { isPztPlacement, PZT } from './site/sitePlan';
+import { DEFAULT_HOUSE_ID } from './house/projects';
 import { OUTBUILDINGS, wiataGaraz } from './house/outbuildings';
 import { HOUSE_LIST } from './house/projects';
 import { polygonAreaPlan, roofFaces, roofTopAt } from './house/roof';
 import { migrateState, useStore } from './store';
-import { pointInPolygon, polygonArea, polygonGap, toHouse, toSite, type P2 } from './placement/geom2d';
+import { closestOnSegment, pointInPolygon, polygonArea, polygonGap, toHouse, toSite, type P2 } from './placement/geom2d';
 import { computeSetbacks, facingDistance, footprintSite, nearestCornerDistances } from './placement/setbacks';
 import { computeEarthwork, offsetPolygon } from './placement/earthwork';
 import { makeSite } from './geo/site';
@@ -476,6 +478,14 @@ describe('site data (public/site)', () => {
     expect(e).toBeLessThan(Math.max(t, 360) + 1e-6);
   });
 
+  it('PZT position: Dom w Arganiach\'s back-left corner is 10.87 m from the south-west boundary, as on the map', () => {
+    const fp = footprintSite(argania2, PZT.placement);
+    const [a, b] = [site.parcel[2], site.parcel[3]];
+    const q = closestOnSegment(fp[0], a, b);
+    expect(Math.hypot(fp[0][0] - q[0], fp[0][1] - q[1])).toBeCloseTo(10.87, 1);
+    expect(fp.every((c) => pointInPolygon(c, site.parcel))).toBe(true);
+  });
+
   it('noon sun is due south and high in June', () => {
     const s = sunState({ month: 6, day: 21, minutes: 12 * 60 + 47 }, meta.origin.lat, meta.origin.lon, site.trueNorth);
     expect(s.altitude * 180 / Math.PI).toBeGreaterThan(62);
@@ -525,6 +535,26 @@ describe('project switching', () => {
     expect(out.annexes).toEqual({});
     expect(out.target).toBe('main');
     expect(out.projectId).toBe('grela-bilgoraj');
+  });
+
+  it('new visitors start on Dom w Arganiach at the PZT position, ±0.00 = 357.00', () => {
+    expect(DEFAULT_HOUSE_ID).toBe('argania2');
+    const init = useStore.getInitialState();
+    expect(init.projectId).toBe('argania2');
+    expect(isPztPlacement(init.placement, init.floorLevel)).toBe(true);
+    expect(init.placementInitialised).toBe(true);
+  });
+
+  it('a never-placed Dom w Arganiach starts at the PZT position', () => {
+    useStore.getState().set({ projectId: 'ambrozja17', projectState: {}, placement: { x: 9, z: 9, bearing: 10, mirror: false }, floorLevel: 350 });
+    useStore.getState().setProject('argania2');
+    const st = useStore.getState();
+    expect(isPztPlacement(st.placement, st.floorLevel)).toBe(true);
+    // once moved, switching away and back keeps the visitor's own position
+    st.setPlacement({ x: 1 });
+    st.setProject('ambrozja17');
+    useStore.getState().setProject('argania2');
+    expect(useStore.getState().placement.x).toBe(1);
   });
 
   it('migrates v1 storage (single house) to Ambrozja 17', () => {

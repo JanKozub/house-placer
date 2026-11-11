@@ -59,6 +59,10 @@ If no imagery is available, the ground falls back to a synthetic field texture.
    Houses with a usable attic or a richer façade can also use: `Opening.level` (the storey an opening serves, e.g. attic windows; sets the eye height of views) and `Opening.shape: 'gable'` (glazing that follows the roof slopes), openings above the wall top inside that wall's gable, `upperFloor` (attic slab with voids), `upperRooms`, `roofWindows`, `facadeZones` (dark render band / wood cladding, cut around openings; colour "Tynk – pas ciemny") and `extras` (boxes for pergolas, canopies, posts).
 3. Run `npm test`. The generic checks run on every project: outline and walls agree, openings fit their walls, roof faces tile the roof outline without steps, and the ridge height matches the section.
 
+## Default position (PZT)
+
+New visitors start on Dom w Arganiach 2, placed as in the land-development plan "PZT koncepcja" (2026-11-10), with ±0.00 = 357.00 m a.s.l. Returning visitors keep their own changes. "Ustaw wg PZT" in the placement tab puts the house back. The position in `src/site/sitePlan.ts` was measured from the drawing. The map's plot outline was fitted to the GUGiK parcel, agreeing to 5–10 cm. Then the house's outer walls were fitted to the drawn walls. The back-left corner comes out 10.87 m from the south-west boundary, as labelled on the map.
+
 ## Extra buildings
 
 Extra buildings on the plot (sheds, garages) are added in the placement tab, under "Budynki dodatkowe". They belong to the plot, not to a house project, so they stay where you put them when you switch houses. Each one is placed, rotated and levelled like the house: drag it on the plan, or pick it in the "Przesuwany budynek" switch. It gets its own setback rows, corner labels (W1, W2…) and a distance-to-house line. The catalog lives in `src/house/outbuildings.ts`: each entry is a full `HouseDef`. Sides marked `open: true` (a wiata on posts) build no wall but still count in setbacks.
