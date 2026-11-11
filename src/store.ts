@@ -1,12 +1,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { P2, Placement } from './placement/geom2d';
-import { PZT } from './site/sitePlan';
+import { PZT, PZT_CARS, PZT_DRIVEWAY, PZT_FENCE_EDGES, PZT_GATES, type Gate } from './site/sitePlan';
 
 export type GardenKind = 'driveway' | 'path' | 'patio' | 'flowerbed' | 'gravel';
 export interface GardenArea { id: string; kind: GardenKind; points: P2[] }
 export type TreeKind = 'deciduous' | 'conifer' | 'shrub' | 'birch';
 export interface Tree { id: string; kind: TreeKind; x: number; z: number; height: number }
+/** a parked car: centre in site coords, rot = three.js rotation about Y (car front = local +x) */
+export interface Car { id: string; x: number; z: number; rot: number; color: string }
 
 /** what the plan view dimensions: corner → every plot edge, wall → facing edges (WT §12), or nothing */
 export type DimsMode = 'corners' | 'walls' | 'off';
@@ -24,7 +26,8 @@ export type Tool =
   | 'shrub'
   | 'fence'
   | 'buildingLine'
-  | 'measure';
+  | 'measure'
+  | 'car';
 
 export interface Palette {
   plaster: string;
@@ -82,6 +85,9 @@ export interface AppState {
   palette: Palette;
   garden: GardenArea[];
   trees: Tree[];
+  cars: Car[];
+  /** gates set into the fence (an edge without fence shows none) */
+  gates: Gate[];
   fenceEdges: number[];
   fenceHeight: number;
   buildingLine: P2[] | null;
@@ -98,6 +104,7 @@ export interface AppState {
   setLayers: (p: Partial<AppState['layers']>) => void;
   addGarden: (a: GardenArea) => void;
   addTree: (t: Tree) => void;
+  addCar: (c: Car) => void;
   removeSelected: () => void;
   toggleFenceEdge: (i: number) => void;
   /** add an extra building of a catalog kind; it becomes the building the controls act on */
@@ -112,6 +119,32 @@ export function migrateState(state: unknown, version: number) {
   if (version < 2) out = { ...out, projectId: 'ambrozja17', projectState: {} };
   if (version < 3) out = { ...out, annexes: {}, target: 'main' };
   if (version < 4) out = { ...out, outbuildings: [] };
+  if (version < 5) {
+    // the PZT site layout arrives for everyone who hasn't laid out their own drive / fence yet
+    const garden = out.garden ?? [];
+    out = {
+      ...out,
+      cars: out.cars ?? PZT_CARS,
+      garden: garden.some((g) => g.kind === 'driveway') ? garden : [...garden, PZT_DRIVEWAY],
+      gates: PZT_GATES,
+      fenceEdges: out.fenceEdges?.length ? out.fenceEdges : PZT_FENCE_EDGES,
+    };
+  } else if (version < 6) {
+    // v5 had a guessed forecourt with gate necks: the PZT one is the exact drawn outline, and the
+    // gates are explicit; the PZT house moved 8 cm onto the drawn walls (depth 12.40)
+    const OLD = { x: -3.95, z: -12.29 };
+    const wasPzt = (pl?: Placement) => !!pl && Math.abs(pl.x - OLD.x) < 0.005 && Math.abs(pl.z - OLD.z) < 0.005 && Math.abs(pl.bearing - 51.3) < 0.05;
+    const carAt = new Map(PZT_CARS.map((c) => [c.id, c]));
+    out = {
+      ...out,
+      garden: (out.garden ?? []).filter((g) => g.id !== 'pzt-wicket').map((g) => (g.id === PZT_DRIVEWAY.id ? PZT_DRIVEWAY : g)),
+      gates: out.gates ?? PZT_GATES,
+      cars: (out.cars ?? []).map((c) => (carAt.has(c.id) ? { ...c, ...carAt.get(c.id)!, color: c.color } : c)),
+    };
+    if (out.projectId === PZT.projectId && wasPzt(out.placement)) out.placement = { ...PZT.placement };
+    const ps = out.projectState?.[PZT.projectId];
+    if (ps && wasPzt(ps.placement)) out.projectState = { ...out.projectState, [PZT.projectId]: { ...ps, placement: { ...PZT.placement } } };
+  }
   return out;
 }
 
@@ -132,9 +165,12 @@ export const useStore = create<AppState>()(
       outbuildings: [],
       sun: { month: 6, day: 21, minutes: 17 * 60 },
       palette: DEFAULT_PALETTE,
-      garden: [],
+      // the PZT layout: the drawn forecourt, gate and wicket in the north-east fence, fence all round, two cars at the garage
+      garden: [PZT_DRIVEWAY],
       trees: [],
-      fenceEdges: [],
+      cars: PZT_CARS,
+      gates: PZT_GATES,
+      fenceEdges: PZT_FENCE_EDGES,
       fenceHeight: 1.5,
       buildingLine: null,
       layers: { parcelLawn: true, neighbors: true, ao: true, interiorLights: true, ortho: true, dims: true, plan: true, roads: true, buildings: true, dimsMode: 'corners' },
@@ -158,10 +194,11 @@ export const useStore = create<AppState>()(
       setLayers: (p) => set({ layers: { ...get().layers, ...p } }),
       addGarden: (a) => set({ garden: [...get().garden, a] }),
       addTree: (t) => set({ trees: [...get().trees, t] }),
+      addCar: (c) => set({ cars: [...get().cars, c] }),
       removeSelected: () => {
         const id = get().selected;
         if (!id) return;
-        set({ garden: get().garden.filter((g) => g.id !== id), trees: get().trees.filter((t) => t.id !== id), selected: null });
+        set({ garden: get().garden.filter((g) => g.id !== id), trees: get().trees.filter((t) => t.id !== id), cars: get().cars.filter((c) => c.id !== id), selected: null });
       },
       addOutbuilding: (kind, placement) => {
         const id = `ob-${uid()}`;
@@ -179,7 +216,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'house-placer-v1',
-      version: 4,
+      version: 6,
       migrate: (state, version) => migrateState(state, version) as AppState,
       partialize: (s) => ({
         tab: s.tab,
@@ -195,6 +232,8 @@ export const useStore = create<AppState>()(
         palette: s.palette,
         garden: s.garden,
         trees: s.trees,
+        cars: s.cars,
+        gates: s.gates,
         fenceEdges: s.fenceEdges,
         fenceHeight: s.fenceHeight,
         buildingLine: s.buildingLine,
@@ -204,4 +243,4 @@ export const useStore = create<AppState>()(
   ),
 );
 
-export const PERSIST_KEYS = ['projectId', 'projectState', 'placement', 'floorLevel', 'annexes', 'outbuildings', 'sun', 'palette', 'garden', 'trees', 'fenceEdges', 'fenceHeight', 'buildingLine', 'layers'] as const;
+export const PERSIST_KEYS = ['projectId', 'projectState', 'placement', 'floorLevel', 'annexes', 'outbuildings', 'sun', 'palette', 'garden', 'trees', 'cars', 'gates', 'fenceEdges', 'fenceHeight', 'buildingLine', 'layers'] as const;

@@ -164,6 +164,7 @@ export function PlacementPanel() {
   const setLayers = useStore((s) => s.setLayers);
   const garden = useStore((s) => s.garden);
   const trees = useStore((s) => s.trees);
+  const cars = useStore((s) => s.cars);
   const selected = useStore((s) => s.selected);
   const fenceHeight = useStore((s) => s.fenceHeight);
   const buildingLine = useStore((s) => s.buildingLine);
@@ -180,7 +181,7 @@ export function PlacementPanel() {
   ];
   const tools: [Tool, string][] = [
     ['select', 'Przesuń dom'], ['driveway', 'Podjazd'], ['path', 'Ścieżka'], ['patio', 'Patio'], ['flowerbed', 'Rabata'], ['gravel', 'Żwir'],
-    ['deciduous', 'Drzewo'], ['birch', 'Brzoza'], ['conifer', 'Iglak'], ['shrub', 'Krzew'], ['fence', 'Ogrodzenie'], ['buildingLine', 'Linia zabudowy'], ['measure', 'Pomiar'],
+    ['deciduous', 'Drzewo'], ['birch', 'Brzoza'], ['conifer', 'Iglak'], ['shrub', 'Krzew'], ['fence', 'Ogrodzenie'], ['buildingLine', 'Linia zabudowy'], ['measure', 'Pomiar'], ['car', 'Samochód'],
   ];
 
   const center = () => {
@@ -335,6 +336,11 @@ export function PlacementPanel() {
             </li>
           ))}
           {trees.length > 0 && <li className="muted">drzewa i krzewy: {trees.length}</li>}
+          {cars.map((c, i) => (
+            <li key={c.id} className={selected === c.id ? 'sel' : ''} onClick={() => set({ selected: c.id })}>
+              samochód {i + 1}
+            </li>
+          ))}
           {buildingLine && <li onClick={() => set({ buildingLine: null })} className="muted">linia zabudowy · kliknij, aby usunąć</li>}
         </ul>
         {selected && <button className="danger" onClick={() => useStore.getState().removeSelected()}>Usuń zaznaczone</button>}

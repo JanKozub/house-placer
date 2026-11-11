@@ -9,6 +9,7 @@ import { Fence, Trees } from '../site/Garden';
 import { fillSkyTexture, horizonColor, makeSkyTexture } from '../site/sun';
 import { Landscape } from '../site/Landscape';
 import { Buildings } from '../site/Buildings';
+import { Cars } from '../site/Cars';
 import { bumpMotion } from './motion';
 
 function SkyAndSun({ dir, night, target, shadows }: { dir: THREE.Vector3; night: number; target: THREE.Vector3; shadows: boolean }) {
@@ -113,6 +114,7 @@ export function SceneContent({ shadows = true, fixedSun }: { shadows?: boolean; 
       ))}
       <Trees site={site} platform={d.platforms} />
       <Fence site={site} platform={d.platforms} />
+      <Cars site={site} platforms={d.platforms} />
     </>
   );
 }

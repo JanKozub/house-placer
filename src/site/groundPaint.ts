@@ -128,7 +128,7 @@ export interface OverlaySpec {
 export function paintOverlay(
   canvas: HTMLCanvasElement,
   spec: OverlaySpec,
-  opts: { parcel: P2[]; lawn: boolean; garden: GardenArea[]; apron: P2[] | null; roads: Road[] },
+  opts: { parcel: P2[]; lawn: boolean; garden: GardenArea[]; apron: P2[] | null; roads: Road[]; slopes?: { a0: P2; a1: P2; b0: P2; b1: P2 }[] },
 ) {
   canvas.width = canvas.height = spec.px;
   const ctx = canvas.getContext('2d')!;
@@ -145,6 +145,23 @@ export function paintOverlay(
     path(opts.parcel);
     ctx.fillStyle = pattern(ctx, 'lawn', k);
     ctx.fill();
+  }
+  // slope bands (skarpy): darker, rougher grass with mowing stripes down the slope
+  for (const q of opts.slopes ?? []) {
+    path([q.a0, q.a1, q.b1, q.b0]);
+    ctx.fillStyle = 'rgba(44, 66, 28, 0.38)';
+    ctx.fill();
+    const L = Math.hypot(q.a1[0] - q.a0[0], q.a1[1] - q.a0[1]);
+    ctx.strokeStyle = 'rgba(30, 48, 18, 0.35)';
+    ctx.lineWidth = Math.max(1, 0.06 * k);
+    for (let s = 0.3; s < L; s += 0.6) {
+      const t = s / L;
+      const lerp = (p: P2, q2: P2): P2 => [p[0] + (q2[0] - p[0]) * t, p[1] + (q2[1] - p[1]) * t];
+      ctx.beginPath();
+      ctx.moveTo(...tr(lerp(q.b0, q.b1)));
+      ctx.lineTo(...tr(lerp(q.a0, q.a1)));
+      ctx.stroke();
+    }
   }
   if (opts.apron) {
     path(opts.apron);

@@ -185,7 +185,7 @@ export function Terrain({ site, platforms }: { site: Site; platforms: PlatformSp
   useEffect(() => {
     // the gravel strip around the house is a separate mesh (ApronMesh), so dragging the house
     // doesn't repaint and re-upload this 4096² texture every frame
-    paintOverlay(overlay.image as HTMLCanvasElement, spec, { parcel: site.parcel, lawn, garden, apron: null, roads });
+    paintOverlay(overlay.image as HTMLCanvasElement, spec, { parcel: site.parcel, lawn, garden, apron: null, roads, slopes: site.slopes });
     overlay.needsUpdate = true;
     invalidate();
   }, [overlay, spec, site, lawn, garden, roads, invalidate]);

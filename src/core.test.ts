@@ -8,7 +8,9 @@ import { ambrozja17Detached, detachedGarage } from './house/ambrozja17-detached'
 import { buildingDef, defaultAnnexPlacement } from './house/annex';
 import { carvedHeight } from './site/Terrain';
 import { argania2 } from './house/argania2';
-import { isPztPlacement, PZT } from './site/sitePlan';
+import { isPztPlacement, PZT, PZT_CARS, PZT_DRIVEWAY, PZT_GATES } from './site/sitePlan';
+import { fenceOpenings } from './site/Garden';
+import { toLocal } from './house/geometry';
 import { DEFAULT_HOUSE_ID } from './house/projects';
 import { OUTBUILDINGS, wiataGaraz } from './house/outbuildings';
 import { HOUSE_LIST } from './house/projects';
@@ -17,7 +19,7 @@ import { migrateState, useStore } from './store';
 import { closestOnSegment, pointInPolygon, polygonArea, polygonGap, toHouse, toSite, type P2 } from './placement/geom2d';
 import { computeSetbacks, facingDistance, footprintSite, nearestCornerDistances } from './placement/setbacks';
 import { computeEarthwork, offsetPolygon } from './placement/earthwork';
-import { makeSite } from './geo/site';
+import { makeSite, type Survey } from './geo/site';
 import { sunState, warsawDate } from './site/sun';
 
 const T30 = Math.tan(Math.PI / 6);
@@ -215,10 +217,11 @@ describe('Ambrozja 17 with a detached garage', () => {
 describe('Dom w Arganiach 2 (G2E)', () => {
   const h = argania2;
   const T38 = Math.tan((38 * Math.PI) / 180);
-  it('L-shaped 14.30 × 12.45 m (7.40 + 6.90, 8.70 + 3.75), pow. zabudowy ≈ 150.82 m²', () => {
-    expect([h.width, h.depth]).toEqual([14.3, 12.45]);
-    // outer walls without the 1 cm render; the spec area includes it
-    expect(Math.abs(polygonArea(h.outline) - h.footprintArea)).toBeLessThan(0.8);
+  it('L-shaped 14.30 × 12.40 m as adapted on the PZT (7.40 + 6.90, 8.70 + 3.70); catalogue 150.82 m² had 3.75', () => {
+    expect([h.width, h.depth]).toEqual([14.3, 12.4]);
+    expect(polygonArea(h.outline)).toBeCloseTo(14.3 * 8.7 + 6.9 * 3.7, 2);
+    // the catalogue area (12.45 deep, with the 1 cm render) minus the 5 cm the PZT takes off the wing
+    expect(Math.abs(polygonArea(h.outline) + 6.9 * 0.05 - h.footprintArea)).toBeLessThan(0.8);
   });
 
   it('room schedules: ground floor 114.75 m² (garage 35.20), attic 89.33 m², together the usable 204.08', () => {
@@ -486,6 +489,91 @@ describe('site data (public/site)', () => {
     expect(fp.every((c) => pointInPolygon(c, site.parcel))).toBe(true);
   });
 
+  it('terrain is shifted to EVRF2007 and passes through the surveyed spot heights (PZT)', () => {
+    const survey = JSON.parse(readFileSync('public/site/survey.json', 'utf8')) as Survey;
+    const fitted = makeSite(meta, parcel.ring, [], dem.buffer.slice(dem.byteOffset, dem.byteOffset + dem.byteLength), false, [], [], [], survey);
+    expect(survey.datumShift).toBeCloseTo(0.15, 2);
+    expect(survey.points.length).toBeGreaterThan(50);
+    // outside the plot the ground is as surveyed; inside it is the design levelling
+    const outside = survey.points.filter(([x, z]) => !pointInPolygon([x, z], fitted.parcel));
+    expect(outside.length).toBeGreaterThan(20);
+    for (const [x, z, hh] of outside) expect(Math.abs(fitted.dem.heightAt(x, z) - hh)).toBeLessThan(0.06);
+    // far from the survey only the height-system shift applies
+    expect(fitted.dem.heightAt(-140, 140) - site.dem.heightAt(-140, 140)).toBeCloseTo(0.15, 3);
+  });
+
+  it('the plot is levelled to 357.05 (Paweł): a ~0.7–0.8 m cut below the road, ~1.5 m embankment at the east corner', () => {
+    const survey = JSON.parse(readFileSync('public/site/survey.json', 'utf8')) as Survey;
+    const f = makeSite(meta, parcel.ring, [], dem.buffer.slice(dem.byteOffset, dem.byteOffset + dem.byteLength), false, [], [], [], survey);
+    const P = f.parcel;
+    const cen = P.reduce((m, p) => [m[0] + p[0] / P.length, m[1] + p[1] / P.length], [0, 0]);
+    expect(f.dem.heightAt(cen[0], cen[1])).toBeCloseTo(357.05, 2);
+    const step = (e: number, t: number, outer: number, inner: number) => {
+      const a = P[e], b = P[(e + 1) % P.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const d = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
+      let n = [-d[1], d[0]];
+      if ((cen[0] - (a[0] + b[0]) / 2) * n[0] + (cen[1] - (a[1] + b[1]) / 2) * n[1] < 0) n = [-n[0], -n[1]];
+      const at = (o: number) => f.dem.heightAt(a[0] + (b[0] - a[0]) * t + n[0] * o, a[1] + (b[1] - a[1]) * t + n[1] * o);
+      return at(inner) - at(outer);
+    };
+    expect(step(2, 0.5, 1.0, 3.0)).toBeLessThan(-0.6); // road side: cut down from the road
+    expect(step(0, 0.25, 0, 3.0)).toBeGreaterThan(1.2); // north-east, near the east corner: embankment
+  });
+
+  it('PZT slope bands sit along all six plot edges at the drawn widths, inside the plot', () => {
+    const survey = JSON.parse(readFileSync('public/site/survey.json', 'utf8')) as Survey;
+    const fitted = makeSite(meta, parcel.ring, [], dem.buffer.slice(dem.byteOffset, dem.byteOffset + dem.byteLength), false, [], [], [], survey);
+    expect(fitted.slopes).toHaveLength(6);
+    fitted.slopes.forEach((q, i) => {
+      const b = survey.slopes![i];
+      expect(Math.hypot(q.b0[0] - q.a0[0], q.b0[1] - q.a0[1])).toBeCloseTo(b.inner - b.outer, 6);
+      const mid: P2 = [(q.a0[0] + q.a1[0] + q.b0[0] + q.b1[0]) / 4, (q.a0[1] + q.a1[1] + q.b0[1] + q.b1[1]) / 4];
+      expect(pointInPolygon(mid, fitted.parcel)).toBe(true);
+    });
+  });
+
+  it('PZT forecourt: the drawn curb (plan X 7.40 / Y 19.88 / X 3.04 / Y 9.90), out to the NE and NW boundary lines 0.3 m inside', () => {
+    const plan = PZT_DRIVEWAY.points.map((p) => {
+      const l = toHouse(p, PZT.placement);
+      const q = toLocal(argania2, 0, 0); // plan origin in house-local coords
+      return [l[0] - q[0], l[1] - q[1]];
+    });
+    const drawn = [[-0.85, 8.7], [-0.85, 9.9], [3.04, 9.9], [3.04, 19.88], [7.4, 19.88], [7.4, 22.15], [18.2, 21.35], [19.27, 12.4], [14.3, 12.4], [7.4, 12.4], [7.4, 8.7]];
+    // plan axes may be flipped against house-local ones: compare via distances between vertices
+    const dist = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+    for (let i = 0; i < drawn.length; i++) for (let j = i + 1; j < drawn.length; j++) expect(Math.abs(dist(plan[i], plan[j]) - dist(drawn[i], drawn[j]))).toBeLessThan(0.03);
+    // the garage door front (plan Y 12.40, X 7.40–14.30) is the yard's edge
+    const fp = footprintSite(argania2, PZT.placement);
+    expect(fp.some((c) => Math.hypot(c[0] - PZT_DRIVEWAY.points[9][0], c[1] - PZT_DRIVEWAY.points[9][1]) < 0.02)).toBe(true);
+    // the two far corners sit on the boundary lines: 0.3 m inside the NE (edge 0) and NW (edge 1) boundary
+    const off = (p: P2, e: number) => { const a = site.parcel[e], b = site.parcel[(e + 1) % site.parcel.length]; const q = closestOnSegment(p, a, b); return Math.hypot(p[0] - q[0], p[1] - q[1]); };
+    expect(off(PZT_DRIVEWAY.points[5], 0)).toBeCloseTo(0.3, 1);
+    expect(off(PZT_DRIVEWAY.points[6], 0)).toBeCloseTo(0.3, 1);
+    expect(off(PZT_DRIVEWAY.points[7], 1)).toBeCloseTo(0.3, 1);
+  });
+
+  it('PZT entrance: 4.5 m sliding gate centred on the garage door and a 1 m wicket in the north-east fence', () => {
+    const [a, b] = [site.parcel[0], site.parcel[1]]; // north-east edge
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const d = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
+    const open = fenceOpenings(site.parcel, 0, [PZT_DRIVEWAY.points], PZT_GATES);
+    expect(open.map(([o, c, k]) => [Math.round((c - o) * 100) / 100, k])).toEqual([[1, 'wicket'], [4.5, 'sliding']]);
+    // the forecourt stops at the boundary line, so the fence only opens at the gates
+    expect(fenceOpenings(site.parcel, 0, [PZT_DRIVEWAY.points], [])).toEqual([]);
+    const fp = footprintSite(argania2, PZT.placement);
+    // straight out from the garage door (plan X 10.82) along the house axis to the fence line (plan Y ≈ 22.0)
+    const doorMid = toSite(toLocal(argania2, 10.82, 22.0), PZT.placement);
+    const sDoor = (doorMid[0] - a[0]) * d[0] + (doorMid[1] - a[1]) * d[1];
+    expect(Math.abs((open[1][0] + open[1][1]) / 2 - sDoor)).toBeLessThan(0.15);
+    // the wicket opens onto the forecourt's lane (plan X 3.04–7.40), the sliding gate onto the yard
+    expect(open[0][0]).toBeGreaterThan(34.1);
+    // both cars stand on the drive, clear of the house
+    for (const c of PZT_CARS) {
+      expect(pointInPolygon([c.x, c.z], PZT_DRIVEWAY.points)).toBe(true);
+      expect(pointInPolygon([c.x, c.z], fp)).toBe(false);
+    }
+  });
+
   it('noon sun is due south and high in June', () => {
     const s = sunState({ month: 6, day: 21, minutes: 12 * 60 + 47 }, meta.origin.lat, meta.origin.lon, site.trueNorth);
     expect(s.altitude * 180 / Math.PI).toBeGreaterThan(62);
@@ -543,6 +631,43 @@ describe('project switching', () => {
     expect(init.projectId).toBe('argania2');
     expect(isPztPlacement(init.placement, init.floorLevel)).toBe(true);
     expect(init.placementInitialised).toBe(true);
+  });
+
+  it('new visitors also get the PZT layout: forecourt, gate and wicket, fence all round, two cars', () => {
+    const init = useStore.getInitialState();
+    expect(init.garden.map((g) => g.id)).toEqual(['pzt-driveway']);
+    expect(init.gates.map((g) => g.kind)).toEqual(['sliding', 'wicket']);
+    expect(init.cars).toHaveLength(2);
+    expect(init.fenceEdges).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it('migrates v4 storage: adds the PZT layout unless a drive / fence was already laid out', () => {
+    const fresh = migrateState({ projectId: 'argania2', garden: [], fenceEdges: [] }, 4) as { cars: unknown[]; garden: { id: string }[]; fenceEdges: number[] };
+    expect(fresh.cars).toHaveLength(2);
+    expect(fresh.garden.map((g) => g.id)).toEqual(['pzt-driveway']);
+    expect(fresh.fenceEdges).toHaveLength(6);
+    const own = migrateState({ garden: [{ id: 'mine', kind: 'driveway', points: [] }], fenceEdges: [2] }, 4) as { garden: { id: string }[]; fenceEdges: number[] };
+    expect(own.garden.map((g) => g.id)).toEqual(['mine']);
+    expect(own.fenceEdges).toEqual([2]);
+  });
+
+  it('migrates v5 storage: exact forecourt, explicit gates, the PZT house and cars moved onto the drawing', () => {
+    const old = { x: -3.95, z: -12.29, bearing: 51.3, mirror: false };
+    const v5 = {
+      projectId: 'argania2', placement: old, projectState: {},
+      garden: [{ id: 'pzt-driveway', kind: 'driveway', points: [[0, 0]] }, { id: 'pzt-wicket', kind: 'path', points: [[0, 0]] }, { id: 'lawn1', kind: 'lawn', points: [] }],
+      cars: [{ id: 'pzt-car-1', x: 0, z: 0, rot: 0, color: '#ff0000' }, { id: 'c9', x: 5, z: 5, rot: 1, color: '#000' }],
+    };
+    const out = migrateState(v5, 5) as { placement: typeof old; garden: { id: string; points: P2[] }[]; gates: unknown[]; cars: { id: string; x: number; color: string }[] };
+    expect(out.placement).toEqual(PZT.placement);
+    expect(out.garden.map((g) => g.id)).toEqual(['pzt-driveway', 'lawn1']);
+    expect(out.garden[0].points).toEqual(PZT_DRIVEWAY.points);
+    expect(out.gates).toEqual(PZT_GATES);
+    expect(out.cars[0]).toMatchObject({ x: PZT_CARS[0].x, color: '#ff0000' });
+    expect(out.cars[1].x).toBe(5);
+    // a house the user moved stays where it is
+    const moved = migrateState({ ...v5, placement: { ...old, x: 2 } }, 5) as { placement: typeof old };
+    expect(moved.placement.x).toBe(2);
   });
 
   it('a never-placed Dom w Arganiach starts at the PZT position', () => {

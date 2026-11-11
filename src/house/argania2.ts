@@ -24,7 +24,9 @@ const T = Math.tan((PITCH_DEG * Math.PI) / 180);
 const W = 14.3; // overall width (740 + 690)
 const D = 8.7; // main body depth
 const XW = 7.4; // garage wing west face
-const DW = 12.45; // garage wing front face (870 + 375)
+// garage wing front face: 12.40 as adapted on the PZT (2026-11-10: chains 8.70 / 12.40 and 13.85 /
+// 10.15 to the same line); the ARCHON+ catalogue plan has 12.45 (870 + 375)
+const DW = 12.4;
 
 const RIDGE_TOP = 7.98; // section
 const TOP_AT_WALL = RIDGE_TOP - (D / 2) * T; // roof top surface at the eave walls

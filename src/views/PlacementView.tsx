@@ -14,6 +14,8 @@ import { centroid, closestOnSegment, pointInPolygon, toSite, type P2, type Place
 import { f } from '../ui/format';
 import { Attribution } from '../ui/Attribution';
 import { cornerLabel } from '../placement/setbacks';
+import { CAR_SIZE } from '../site/Cars';
+import { PZT_CARS } from '../site/sitePlan';
 
 const OVER = 200; // overlay height (scene units) — drawn without depth test
 const FIXED_SUN = new THREE.Vector3(-0.35, 0.85, 0.4).normalize();
@@ -243,8 +245,27 @@ function SiteOverlay() {
   const fenceEdges = useStore((s) => s.fenceEdges);
   const tool = useStore((s) => s.tool);
   const P = site.parcel;
+  // slope bands (skarpy) drawn like on the PZT: the two edge lines and ticks across the slope
+  const slopeLines = useMemo(() => {
+    const out: [number, number, number][][] = [];
+    for (const q of site.slopes) {
+      out.push([v3(q.a0), v3(q.a1)], [v3(q.b0), v3(q.b1)]);
+      const L = Math.hypot(q.a1[0] - q.a0[0], q.a1[1] - q.a0[1]);
+      let k = 0;
+      for (let sp = 0.4; sp < L - 0.2; sp += 0.8, k++) {
+        const t = sp / L, f2 = k % 2 ? 0.5 : 1; // alternating long / short ticks from the inner line
+        const pb: P2 = [q.b0[0] + (q.b1[0] - q.b0[0]) * t, q.b0[1] + (q.b1[1] - q.b0[1]) * t];
+        const pa: P2 = [q.a0[0] + (q.a1[0] - q.a0[0]) * t, q.a0[1] + (q.a1[1] - q.a0[1]) * t];
+        out.push([v3(pb), v3([pb[0] + (pa[0] - pb[0]) * f2, pb[1] + (pa[1] - pb[1]) * f2])]);
+      }
+    }
+    return out;
+  }, [site]);
   return (
     <Overlay>
+      {slopeLines.map((pts, i) => (
+        <Lines key={'sl' + i} points={pts} color="#f1f5f9" width={1} opacity={0.7} />
+      ))}
       {showNb &&
         site.neighbors.map((n) => (
           <group key={n.id}>
@@ -275,6 +296,7 @@ function SiteOverlay() {
 function GardenOverlay({ draft, cursor }: { draft: P2[]; cursor: P2 | null }) {
   const garden = useStore((s) => s.garden);
   const trees = useStore((s) => s.trees);
+  const cars = useStore((s) => s.cars);
   const selected = useStore((s) => s.selected);
   const bl = useStore((s) => s.buildingLine);
   const tool = useStore((s) => s.tool);
@@ -290,6 +312,11 @@ function GardenOverlay({ draft, cursor }: { draft: P2[]; cursor: P2 | null }) {
           <meshBasicMaterial color="#2563eb" depthTest={false} transparent />
         </mesh>
       ))}
+      {cars.filter((c) => c.id === selected).map((c) => {
+        const co = Math.cos(c.rot), si = Math.sin(c.rot), hl = CAR_SIZE.length / 2 + 0.2, hw = CAR_SIZE.width / 2 + 0.2;
+        const pt = (u: number, w: number): P2 => [c.x + u * co + w * si, c.z - u * si + w * co];
+        return <Lines key={c.id} points={ring([pt(hl, hw), pt(hl, -hw), pt(-hl, -hw), pt(-hl, hw)])} color="#2563eb" width={3} />;
+      })}
       {bl && <Lines points={bl.map((p) => v3(p))} color="#7c3aed" width={2.5} dashed />}
       {draftPts.length >= 2 && (
         <Lines points={draftPts.map((p) => v3(p, OVER + 2))} color={tool === 'buildingLine' ? '#7c3aed' : '#2563eb'} width={2.5} dashed={tool === 'measure'} />
@@ -398,8 +425,13 @@ function Interaction({ draft, setDraft, setCursor }: { draft: P2[]; setDraft: (d
     } else {
       // select garden item
       const tree = s.trees.find((t) => Math.hypot(t.x - p[0], t.z - p[1]) < Math.max(0.8, t.height * 0.3));
+      // a car: inside its footprint (front = local +x)
+      const car = s.cars.find((c) => {
+        const dx = p[0] - c.x, dz = p[1] - c.z, co = Math.cos(c.rot), si = Math.sin(c.rot);
+        return Math.abs(dx * co - dz * si) < CAR_SIZE.length / 2 && Math.abs(dx * si + dz * co) < CAR_SIZE.width / 2;
+      });
       const area = [...s.garden].reverse().find((g) => pointInPolygon(p, g.points));
-      st.setState({ selected: tree?.id ?? area?.id ?? null });
+      st.setState({ selected: car?.id ?? tree?.id ?? area?.id ?? null });
       return;
     }
     if (controls) controls.enabled = false;
@@ -454,6 +486,10 @@ function Interaction({ draft, setDraft, setCursor }: { draft: P2[]; setDraft: (d
         if (dd < bd) { bd = dd; best = i; }
       });
       if (best >= 0) s.toggleFenceEdge(best);
+    } else if (t === 'car') {
+      // parked the same way as the default cars; alternating dark / light paint
+      const n = s.cars.length;
+      s.addCar({ id: uid(), x: p[0], z: p[1], rot: PZT_CARS[0].rot, color: n % 2 ? '#d8dbde' : '#2e3338' });
     } else if (t === 'measure') {
       setDraft(draft.length >= 2 ? [p] : [...draft, p]);
     }
@@ -548,6 +584,7 @@ function ToolHint({ tool, draftLen }: { tool: Tool; draftLen: number }) {
     fence: 'Kliknij granicę działki, aby dodać lub usunąć ogrodzenie (przerwy zostają tam, gdzie przecina je podjazd lub ścieżka)',
     buildingLine: 'Klikaj kolejne punkty linii zabudowy (z MPZP / od drogi) · dwuklik lub Enter kończy',
     measure: 'Kliknij dwa punkty, aby zmierzyć odległość',
+    car: 'Kliknij, aby postawić samochód · zaznacz go i naciśnij Delete, aby usunąć',
   };
   const area = AREA_TOOLS.includes(tool as GardenKind);
   const text = area
