@@ -17,7 +17,8 @@
  * attic floor, 80/140 at +0.80), the gable glazing sill +3.20, chimney positions and tops,
  * pergola and entrance canopy heights, and the extent of the façade colour zones.
  */
-import type { ExtraBox, HouseDef } from './types';
+import type { ExtraBox, Facing, FurnitureItem, FurnitureKind, HouseDef, Interior, Vec2 } from './types';
+import { groundPartitions } from './interior';
 
 const PITCH_DEG = 38;
 const T = Math.tan((PITCH_DEG * Math.PI) / 180);
@@ -52,6 +53,202 @@ const pergola: ExtraBox[] = (() => {
   for (let x = 0.75; x < 7.7; x += 0.45) out.push({ x0: x - 0.025, x1: x + 0.025, y0: -2.95, y1: -0.05, h0: 2.95, h1: 3.03, part: 'frame' });
   return out;
 })();
+
+// ---------------------------------------------------------------------------------------------
+// Interior, measured from archon.pl's interactive plans (ground floor and attic, 49 px/m at 2×):
+// partition walls, doors and their swing, the dog-leg stairs (12 + 4 risers of 19.1 cm with a
+// landing over the ground-floor wardrobe), the void over the living room, and the furniture as
+// drawn. Finishes follow ARCHON+'s interior visualisations: cream walls, oak, beige stone on the
+// fireplace wall and the worktops, graphite tall units. Heights from the section: 2.68 on the
+// ground floor, 2.55 under the attic's flat ceiling, knee wall 1.25.
+// ---------------------------------------------------------------------------------------------
+const item = (kind: FurnitureKind, at: Vec2, face: Facing = 'S', w?: number, d?: number, more: Partial<FurnitureItem> = {}): FurnitureItem => ({ kind, at, face, w, d, ...more });
+const RISE = ATTIC / 16, GOING = 0.272;
+const LANDING = 12 * RISE; // +2.295
+
+const interior: Interior = {
+  ground: {
+    level: 0,
+    height: 2.68,
+    walls: [
+      // stair core: the flight runs along the living-room wall, the wardrobe (5) lies under its landing
+      { a: [7.51, 0.45], b: [7.51, 4.41], t: 0.14 },
+      { a: [9.7, 0.45], b: [9.7, 2.42], t: 0.25 },
+      { a: [8.56, 2.36], b: [9.58, 2.36], doors: [{ at: 0.54, width: 0.7, hinge: 'a', opens: 'S' }] },
+      { a: [8.51, 2.36], b: [8.51, 3.23], t: 0.1 },
+      // room 7
+      { a: [9.72, 2.42], b: [9.72, 3.45], doors: [{ at: 0.46, width: 0.85, hinge: 'b', opens: 'E' }] },
+      { a: [9.64, 3.51], b: [13.85, 3.51], t: 0.14 },
+      // bathroom 8 and the boiler room 9
+      { a: [9.64, 3.45], b: [9.64, 5.7], doors: [{ at: 1.42, width: 0.8, hinge: 'b', opens: 'W' }] },
+      { a: [11.14, 3.58], b: [11.14, 5.7], t: 0.18 },
+      // garage back wall: the doorway from the vestibule (sliding door) and the boiler-room door
+      { a: [6.15, 5.84], b: [13.85, 5.84], t: 0.28, doors: [{ at: 0.45, width: 0.9, kind: 'sliding', hinge: 'b', opens: 'N' }, { at: 5.68, width: 0.9, hinge: 'b', opens: 'S' }] },
+      // fridge niche; kitchen | pantry | vestibule | garage
+      { a: [3.89, 5.76], b: [4.6, 5.76] },
+      { a: [4.55, 5.82], b: [4.55, 8.25], doors: [{ at: 1.38, width: 0.7, hinge: 'a', opens: 'W' }] },
+      { a: [5.83, 6.45], b: [5.83, 8.25] },
+      { a: [7.77, 5.98], b: [7.77, 8.25], t: 0.16, doors: [{ at: 1.77, width: 0.8, hinge: 'a', opens: 'E' }] },
+    ],
+    floors: [
+      { rect: [0.45, 5.7, 4.49, 8.25], finish: 'tile' }, // kitchen
+      { rect: [4.61, 6.45, 5.77, 8.25], finish: 'tile' }, // pantry
+      { rect: [5.89, 5.98, 7.69, 8.25], finish: 'tile' }, // vestibule
+      { rect: [9.7, 3.58, 11.05, 5.7], finish: 'tile' }, // bathroom
+      { rect: [11.23, 3.58, 13.85, 5.7], finish: 'concrete' }, // boiler room
+      { rect: [7.85, 5.98, 13.85, DW - 0.45], finish: 'concrete' }, // garage
+    ],
+    items: [
+      // 4. living room + dining
+      item('rug', [5.3, 2.85], 'S', 3.3, 3.2),
+      item('dining', [1.87, 2.97], 'E', 2.0, 1.0, { opt: 8 }),
+      item('pendant', [1.87, 2.45]), item('pendant', [1.87, 3.5]),
+      item('sofa', [4.45, 2.865], 'E', 2.99, 0.96),
+      item('ottoman', [5.49, 3.745], 'S', 1.12, 0.87),
+      item('coffeeTable', [6.06, 2.3], 'S', 0.64, 0.92),
+      item('console', [7.215, 2.3], 'W', 2.4, 0.45),
+      item('tv', [7.415, 2.3], 'W', 1.4),
+      item('fireplace', [5.375, 6.075], 'N', 1.55, 0.75),
+      item('plant', [0.85, 4.95], 'S', 0.44, undefined, { h: 1.7 }),
+      item('plant', [7.08, 0.82], 'S', 0.36, undefined, { h: 1.35 }),
+      // 3. kitchen: peninsula with three stools, hob on the side run, sink under the window
+      item('island', [1.66, 5.8], 'N', 2.4, 1.0),
+      item('stool', [0.95, 5.12]), item('stool', [1.66, 5.12]), item('stool', [2.37, 5.12]),
+      item('pendant', [1.0, 5.8], 'S', undefined, undefined, { h: 1.75 }), item('pendant', [1.66, 5.8], 'S', undefined, undefined, { h: 1.75 }), item('pendant', [2.32, 5.8], 'S', undefined, undefined, { h: 1.75 }),
+      item('counter', [0.755, 7.275], 'E', 1.95, 0.6, { opt: 'hob upper' }),
+      item('counter', [2.475, 7.945], 'N', 2.83, 0.61, { opt: 'sink' }),
+      item('tall', [4.19, 7.945], 'N', 0.6, 0.61, { opt: 'oven', dark: true }),
+      item('tall', [4.19, 6.21], 'W', 0.78, 0.6, { opt: 'fridge', dark: true }),
+      // 2. pantry
+      item('shelf', [5.56, 7.47], 'W', 1.55, 0.41),
+      item('shelf', [5.19, 6.58], 'S', 1.16, 0.25),
+      item('appliance', [4.9, 7.945], 'N', 0.58, 0.6),
+      // 1. vestibule
+      item('wardrobe', [7.385, 6.56], 'W', 1.16, 0.61),
+      item('bench', [6.1, 7.7], 'E', 0.71, 0.4),
+      item('rug', [6.75, 7.85], 'S', 0.9, 0.6),
+      // 5. wardrobe under the landing, 6. hall
+      item('shelf', [8.57, 0.745], 'S', 2.0, 0.59, { h: 1.95 }),
+      item('plant', [9.22, 5.32], 'S', 0.36, undefined, { h: 1.3 }),
+      // 7. room
+      item('wardrobe', [10.125, 1.35], 'E', 1.8, 0.59),
+      item('rug', [11.9, 1.9], 'S', 2.0, 1.4),
+      item('sofa', [12.85, 2.995], 'N', 2.0, 0.89, { dark: true }),
+      item('desk', [13.55, 1.155], 'W', 1.41, 0.6),
+      // 8. bathroom
+      item('shower', [10.375, 3.975], 'S', 1.35, 0.79),
+      item('wc', [10.77, 4.87], 'W', 0.5, 0.56),
+      item('basin', [10.11, 5.475], 'N', 0.6, 0.45),
+      // 9. boiler room
+      item('tank', [11.6, 4.0], 'S', 0.6),
+      item('boiler', [12.99, 5.45], 'N', 0.72, 0.5),
+      // 10. garage: units and a sink along the back wall
+      item('counter', [8.775, 6.24], 'S', 1.73, 0.52, { dark: true }),
+      item('counter', [10.49, 6.24], 'S', 1.42, 0.52, { opt: 'sink', dark: true }),
+      item('wardrobe', [12.875, 6.24], 'S', 0.89, 0.52, { dark: true, h: 2.0 }),
+      item('shelf', [13.62, 9.6], 'W', 2.4, 0.45, { dark: true }),
+    ],
+  },
+  upper: {
+    level: ATTIC,
+    height: 2.55,
+    knee: 1.25,
+    walls: [
+      // garden side: room 9 | void over the living room | stairs | room 2
+      { a: [5.27, 0.45], b: [5.27, 4.19], t: 0.14 },
+      { a: [0.45, 4.19], b: [5.34, 4.19], doors: [{ at: 3.63, width: 0.8, hinge: 'b', opens: 'N' }] },
+      { a: [5.34, 4.19], b: [7.45, 4.19], h: 1.05, glass: true },
+      { a: [7.58, 4.19], b: [8.55, 4.19], h: 1.05, glass: true },
+      { a: [7.51, 0.45], b: [7.51, 4.24], t: 0.14 },
+      { a: [8.575, 1.42], b: [8.575, 4.19], h: 1.05, glass: true },
+      { a: [9.64, 0.45], b: [9.64, 4.24], t: 0.14 },
+      { a: [9.57, 4.19], b: [13.85, 4.19], doors: [{ at: 1.23, width: 0.8, hinge: 'a', opens: 'N' }] },
+      // corridor: room 8, bathroom 7 and the master suite open off its front side
+      { a: [3.34, 4.25], b: [3.34, 5.44] },
+      { a: [3.34, 5.44], b: [11.3, 5.44], doors: [{ at: 0.6, width: 0.8, hinge: 'b', opens: 'S' }, { at: 2.87, width: 0.8, hinge: 'a', opens: 'N' }, { at: 7.03, width: 0.85, hinge: 'a', opens: 'S' }] },
+      { a: [5.16, 5.5], b: [5.16, 8.25] },
+      { a: [7.69, 5.5], b: [7.69, 8.25] },
+      // master suite: bathroom 6 and the wardrobe 4 off its own lobby
+      { a: [9.76, 5.5], b: [9.76, 7.75], doors: [{ at: 1.04, width: 0.8, hinge: 'b', opens: 'E' }] },
+      { a: [7.75, 7.75], b: [9.82, 7.75] },
+      { a: [10.96, 5.5], b: [10.96, 8.22] },
+      // laundry 3 and the wardrobe 4
+      { a: [11.3, 4.25], b: [11.3, 5.5], doors: [{ at: 0.56, width: 0.8, hinge: 'a', opens: 'E' }] },
+      { a: [10.96, 6.55], b: [13.85, 6.55] },
+      { a: [10.96, 8.16], b: [13.85, 8.16], doors: [{ at: 0.94, width: 0.6, kind: 'fold', hinge: 'a', opens: 'S' }] },
+    ],
+    floors: [
+      { rect: [5.23, 5.5, 7.63, 8.25], finish: 'tile' }, // bathroom 7
+      { rect: [7.76, 5.5, 9.7, 7.69], finish: 'tile' }, // bathroom 6
+      { rect: [11.36, 4.25, 13.85, 5.5], finish: 'tile' }, // laundry
+      { rect: [11.03, 5.5, 13.85, 6.49], finish: 'tile' },
+    ],
+    items: [
+      // 1. hall and corridor
+      item('rug', [7.3, 4.82], 'S', 5.4, 0.8),
+      item('plant', [9.1, 3.75], 'S', 0.34, undefined, { h: 1.2 }),
+      item('block', [11.2, 5.72], 'S', 0.34, 0.44), // shaft
+      // 9. room (garden side, west)
+      item('bed', [1.485, 0.94], 'E', 0.97, 1.99),
+      item('nightstand', [0.69, 1.65], 'E', 0.42, 0.42),
+      item('armchair', [3.58, 1.37], 'S', 0.9),
+      item('rug', [2.5, 2.45], 'S', 2.0, 1.3),
+      item('wardrobe', [4.895, 2.135], 'W', 3.37, 0.61),
+      item('desk', [1.87, 3.84], 'N', 2.82, 0.6),
+      // 2. room (garden side, east)
+      item('wardrobe', [9.995, 2.3], 'E', 3.6, 0.59),
+      item('bed', [12.85, 0.94], 'W', 0.97, 1.99),
+      item('nightstand', [13.63, 1.65], 'W', 0.42, 0.42),
+      item('armchair', [11.15, 1.37], 'S', 0.9),
+      item('rug', [12.2, 2.45], 'S', 2.0, 1.3),
+      item('desk', [12.26, 3.84], 'N', 1.5, 0.6),
+      // 8. room (front, west)
+      item('desk', [1.87, 4.55], 'S', 2.82, 0.6),
+      item('bed', [1.485, 7.7], 'E', 0.97, 1.99),
+      item('nightstand', [0.69, 6.98], 'E', 0.42, 0.42),
+      item('armchair', [3.58, 7.25], 'S', 0.9),
+      item('rug', [2.5, 6.3], 'S', 2.0, 1.3),
+      item('wardrobe', [4.795, 7.29], 'W', 1.83, 0.61),
+      // 7. bathroom: double vanity, shower, bath under the roof window
+      item('basin', [5.445, 6.47], 'E', 1.94, 0.43, { opt: 'double' }),
+      item('shower', [7.17, 5.96], 'W', 0.92, 0.92),
+      item('wc', [7.35, 6.95], 'W', 0.5, 0.56),
+      item('bathtub', [6.555, 7.84], 'N', 1.79, 0.72),
+      // 6. bathroom of the master suite
+      item('bathtub', [8.145, 6.6], 'E', 1.79, 0.77),
+      item('basin', [9.115, 5.725], 'S', 0.6, 0.45),
+      item('wc', [9.11, 7.41], 'N', 0.5, 0.56),
+      // 3. laundry
+      item('counter', [11.98, 6.21], 'N', 1.24, 0.56, { opt: 'sink' }),
+      item('washer', [12.91, 6.2], 'N', 0.6, 0.58, { opt: 'stack' }),
+      item('rack', [13.45, 5.3], 'S', 0.5, 0.9),
+      item('shelf', [13.325, 4.585], 'S', 1.05, 0.5),
+      // 4. wardrobe
+      item('wardrobe', [11.3, 7.36], 'E', 1.48, 0.53),
+      item('rail', [12.48, 6.85], 'S', 1.84, 0.45),
+      item('shelf', [13.625, 7.36], 'W', 1.48, 0.45),
+      // 5. master bedroom in the garage wing, under the glazed gable
+      item('wardrobe', [8.8, 8.0], 'S', 1.96, 0.4),
+      item('rug', [11.6, 10.05], 'S', 3.0, 2.6),
+      item('dresser', [8.14, 10.3], 'E', 3.3, 0.55),
+      item('tv', [8.36, 10.05], 'E', 1.2, undefined, { h: 0.82 }),
+      item('armchair', [9.08, 9.06], 'S', 0.9), item('armchair', [9.83, 11.33], 'S', 0.9),
+      item('bed', [12.445, 10.045], 'W', 1.8, 2.0, { dark: true }),
+      item('bench', [11.15, 10.045], 'W', 1.77, 0.5),
+      item('nightstand', [13.2, 8.87], 'W', 0.45, 0.45), item('nightstand', [13.2, 11.22], 'W', 0.45, 0.45),
+      item('dresser', [13.65, 10.07], 'W', 3.7, 0.4, { h: 1.0 }),
+      item('plant', [10.5, 11.5], 'S', 0.36, undefined, { h: 1.25 }),
+    ],
+  },
+  // dog-leg: 12 risers up along the living-room wall to a landing by the garden wall, 4 more back to the attic
+  stairs: {
+    flights: [
+      { from: [8.07, 4.41], dir: 'N', width: 0.98, treads: 11, going: GOING, rise: RISE, startLevel: 0, solid: 5 },
+      { from: [9.085, 1.42], dir: 'S', width: 0.97, treads: 3, going: GOING, rise: RISE, startLevel: LANDING },
+    ],
+    landings: [{ x0: 7.58, x1: 9.57, y0: 0.45, y1: 1.42, level: LANDING }],
+  },
+};
 
 export const argania2: HouseDef = {
   id: 'argania2',
@@ -89,7 +286,7 @@ export const argania2: HouseDef = {
       ],
       outline: [[-G, -O], [W + G, -O], [W + G, DW + G], [XW - O, DW + G], [XW - O, D + O], [-G, D + O]],
       chimneys: [
-        { x: 5.15, y: 6.2, w: 0.6, d: 0.6, top: 8.05 }, // fireplace (kitchen side)
+        { x: 4.8, y: 5.94, w: 0.6, d: 0.86, top: 8.05 }, // fireplace flue (attic plan: the pier between room 8 and bathroom 7)
         { x: 12.45, y: 4.5, w: 0.6, d: 0.6, top: 8.3 }, // boiler room
       ],
       soffits: [
@@ -165,23 +362,13 @@ export const argania2: HouseDef = {
     { wall: 'wingFront', at: 10.82, width: 5.6, height: 2.8, sill: 3.2, kind: 'fixed', shape: 'gable', ref: '560/280', level: ATTIC },
     // side door into the garage from the covered entrance
     { wall: 'wingWest', at: 9.92, width: 0.9, height: 2.1, sill: 0, kind: 'door', ref: '90/210' },
-    // kitchen window 250/140, entrance door 150/210 (door + side light) next to the garage wing
+    // kitchen window 250/140, entrance door 140/210 (door + side light) next to the garage wing
     { wall: 'front', at: 2.48, width: 2.5, height: 1.4, sill: HEAD - 1.4, kind: 'window', panes: 2, ref: '250/140' },
-    { wall: 'front', at: 6.48, width: 1.5, height: 2.1, sill: 0, kind: 'entrance', ref: '150/210' },
+    { wall: 'front', at: 6.57, width: 1.4, height: 2.1, sill: 0, kind: 'entrance', ref: '140/210' },
   ],
 
-  /** ground-floor partitions (approximate, for views through the glass) */
-  partitions: [
-    [7.6, 0, 7.6, 4.3], // living room | wardrobe, stairs
-    [9.95, 0, 9.95, 3.6], // hall | room 7
-    [9.95, 3.6, W, 3.6],
-    [11.05, 3.6, 11.05, 5.95], // bathroom | boiler room
-    [7.6, 5.95, W, 5.95], // garage back wall
-    [7.6, 5.95, 7.6, D], // vestibule | garage
-    [4.55, 6.1, 4.55, D], // kitchen | pantry
-    [5.7, 6.1, 5.7, D], // pantry | vestibule
-    [4.55, 6.1, 5.7, 6.1],
-  ],
+  /** ground-floor partitions for the plan view: the real walls (see `interior`) */
+  partitions: groundPartitions(interior.ground.walls),
   rooms: [
     { name: '1. Wiatrołap', area: 4.07, at: [6.6, 7.4] },
     { name: '2. Spiżarnia', area: 1.99, at: [5.12, 7.6] },
@@ -210,10 +397,11 @@ export const argania2: HouseDef = {
     level: ATTIC,
     thickness: 0.24,
     voids: [
-      { x0: 5.2, x1: 7.5, y0: 0.5, y1: 4.3 }, // double-height living room (antresola)
-      { x0: 7.72, x1: 8.7, y0: 1.9, y1: 4.3 }, // stairwell
+      [[5.34, 0.45], [7.44, 0.45], [7.44, 4.13], [5.34, 4.13]], // double-height living room (antresola)
+      [[7.58, 0.45], [9.57, 0.45], [9.57, 1.42 + 3 * GOING], [8.55, 1.42 + 3 * GOING], [8.55, 4.13], [7.58, 4.13]], // stairwell
     ],
   },
+  interior,
   roofWindows: [
     { at: [9.1, 1.3], width: 0.78, length: 1.4 }, // stairs, garden slope
     { at: [6.2, 7.5], width: 0.78, length: 1.4 }, // bathroom, front slope
@@ -255,8 +443,8 @@ export const argania2: HouseDef = {
   views: {
     valley: { at: 'valleyWindow', h: 1.6, look: 'valley', label: 'Na dolinę' },
     terrace: { at: [4.2, -1.6], h: 1.6, look: [0, -1], label: 'Z tarasu' },
-    living: { at: [1.6, 3.5], h: 1.6, look: [-1, 0], label: 'Z salonu' },
-    kitchen: { at: [2.48, 7.6], h: 1.6, look: [0, 1], label: 'Z kuchni' },
+    living: { at: [3.3, 2.9], h: 1.6, look: [-1, 0], label: 'Z salonu' },
+    kitchen: { at: [2.48, 7.2], h: 1.6, look: [0, 1], label: 'Z kuchni' },
     bedroom: { at: [10.82, 10.6], h: ATTIC + 1.6, look: [0, 1], label: 'Z sypialni (poddasze)' },
   },
 };

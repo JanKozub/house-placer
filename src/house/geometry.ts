@@ -5,7 +5,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { HouseDef, Opening, Vec2, WallEdge } from './types';
-import { onVolumeEdge, roofFaces, tanPitch, type RoofFace } from './roof';
+import { onVolumeEdge, roofFaces, roofTopAt, tanPitch, type RoofFace } from './roof';
+import { buildInterior, ceilingDrop } from './interior';
+import { offsetPolygon } from '../placement/earthwork';
 
 /** plan coords → house-local (origin at the outline bbox centre) */
 export const toLocal = (h: HouseDef, X: number, Y: number): Vec2 => [X - h.width / 2, Y - h.depth / 2];
@@ -23,15 +25,51 @@ export type PartName =
   | 'sill'
   | 'floor'
   | 'interior'
+  | 'ceiling'
   | 'paving'
   | 'gutter'
-  | 'accent';
+  | 'accent'
+  // interiors (src/house/interior.ts)
+  | 'tile'
+  | 'tileDark'
+  | 'concrete'
+  | 'oak'
+  | 'cabinet'
+  | 'cabinetDark'
+  | 'stone'
+  | 'fabric'
+  | 'fabricDark'
+  | 'linen'
+  | 'steel'
+  | 'ceramic'
+  | 'black'
+  | 'mirror'
+  | 'plant'
+  | 'rug'
+  | 'door'
+  | 'fire';
 
 export type HouseParts = Partial<Record<PartName, THREE.BufferGeometry>>;
 
+/**
+ * What can be hidden to look inside: the roof (with the ceiling under it), and the upper storey
+ * (the slab, everything standing on it and the outer walls above its underside).
+ */
+export type Layer = 'base' | 'upper' | 'roof';
+export const LAYERS: Layer[] = ['base', 'upper', 'roof'];
+
 class Bucket {
-  parts = new Map<PartName, THREE.BufferGeometry[]>();
-  add(name: PartName, g: THREE.BufferGeometry) {
+  parts = new Map<string, THREE.BufferGeometry[]>();
+  layer: Layer = 'base';
+  /** run `fn` with everything it adds going to `layer` */
+  in(layer: Layer, fn: () => void) {
+    const prev = this.layer;
+    this.layer = layer;
+    fn();
+    this.layer = prev;
+  }
+  add(part: PartName, g: THREE.BufferGeometry, layer: Layer = this.layer) {
+    const name = `${layer}:${part}`;
     const ng = g.index ? g.toNonIndexed() : g;
     // normalise attributes so everything can merge
     for (const k of Object.keys(ng.attributes)) if (!['position', 'normal', 'uv'].includes(k)) ng.deleteAttribute(k);
@@ -41,9 +79,16 @@ class Bucket {
     if (!this.parts.has(name)) this.parts.set(name, []);
     this.parts.get(name)!.push(ng);
   }
-  build(): HouseParts {
-    const out: HouseParts = {};
+  /** merged geometry per part, of the given layers (default: all of them) */
+  build(layers: Layer[] = LAYERS): HouseParts {
+    const lists = new Map<PartName, THREE.BufferGeometry[]>();
     for (const [k, list] of this.parts) {
+      const [layer, part] = k.split(':') as [Layer, PartName];
+      if (!layers.includes(layer)) continue;
+      lists.set(part, [...(lists.get(part) ?? []), ...list]);
+    }
+    const out: HouseParts = {};
+    for (const [k, list] of lists) {
       const m = mergeGeometries(list, false);
       if (m) {
         m.computeBoundingBox();
@@ -190,7 +235,19 @@ function insetConvex(poly: Vec2[], d: number): Vec2[] {
 const shapeOf = (pts: Vec2[]) => new THREE.Shape(pts.map(([u, v]) => new THREE.Vector2(u, v)));
 const pathOf = (pts: Vec2[]) => new THREE.Path(pts.map(([u, v]) => new THREE.Vector2(u, v)));
 
-export function buildHouse(house: HouseDef): HouseParts {
+/** the whole house, one geometry per material */
+export const buildHouse = (house: HouseDef): HouseParts => fillBucket(house).build();
+
+/** the house split into the layers that can be hidden (see Layer) */
+export function buildHouseLayers(house: HouseDef): Record<Layer, HouseParts> {
+  const B = fillBucket(house);
+  return { base: B.build(['base']), upper: B.build(['upper']), roof: B.build(['roof']) };
+}
+
+/** where the outer walls are split between the ground storey and the upper one: the slab's underside */
+export const storeySplit = (house: HouseDef) => (house.upperFloor ? house.upperFloor.level - house.upperFloor.thickness : null);
+
+function fillBucket(house: HouseDef): Bucket {
   const B = new Bucket();
   const T = tanPitch(house);
   const t = house.wallThickness;
@@ -200,6 +257,8 @@ export function buildHouse(house: HouseDef): HouseParts {
   const P = house.plinth;
   const walls = house.walls;
   const box = (x0: number, x1: number, y0: number, y1: number, h0: number, h1: number) => planBox(house, x0, x1, y0, y1, h0, h1);
+  const uf = house.upperFloor;
+  const split = storeySplit(house);
 
   // ---------- exterior walls ----------
   const mergedGables = new Set<(typeof r.gables)[number]>();
@@ -220,36 +279,48 @@ export function buildHouse(house: HouseDef): HouseParts {
     if (merged) mergedGables.add(gb!);
 
     const base = w.base ?? 0;
-    const shape = new THREE.Shape();
     const u0 = -extA, u1 = L + extB, v0 = base - 0.02, v1 = top;
-    shape.moveTo(u0, v0);
-    shape.lineTo(u1, v0);
-    if (merged) {
-      const eu = gableEaveUnder(house);
-      shape.lineTo(u1, eu);
-      shape.lineTo(L / 2, eu + (L / 2) * T);
-      shape.lineTo(u0, eu);
-    } else {
-      shape.lineTo(u1, v1);
-      shape.lineTo(u0, v1);
-    }
-    shape.closePath();
-
-    for (const o of ops) {
-      const { u0: a0, u1: a1 } = openingSpan(o, w);
-      if (o.shape === 'gable') {
-        const poly = openingPolygon(house, o, a0, a1);
-        shape.holes.push(pathOf(poly));
-        buildGableGlazing(B, poly, m);
-        continue;
+    // with an upper storey the wall is built in two bands, so the upper one can be hidden
+    const two = split !== null && split < top - 1e-6 && split > v0 + 1e-6;
+    const bands: { lo: number; hi: number; layer: Layer; gable: boolean }[] = two
+      ? [{ lo: v0, hi: split!, layer: 'base', gable: false }, { lo: split!, hi: v1, layer: 'upper', gable: merged }]
+      : [{ lo: v0, hi: v1, layer: 'base', gable: merged }];
+    for (const band of bands) {
+      const shape = new THREE.Shape();
+      shape.moveTo(u0, band.lo);
+      shape.lineTo(u1, band.lo);
+      if (band.gable) {
+        const eu = gableEaveUnder(house);
+        shape.lineTo(u1, eu);
+        shape.lineTo(L / 2, eu + (L / 2) * T);
+        shape.lineTo(u0, eu);
+      } else {
+        shape.lineTo(u1, band.hi);
+        shape.lineTo(u0, band.hi);
       }
-      const hole = new THREE.Path();
-      rectPath(hole, a0, Math.max(o.sill, base), a1, o.sill + o.height);
-      shape.holes.push(hole);
-      buildOpening(B, o, w, m, a0, a1);
+      shape.closePath();
+
+      B.in(band.layer, () => {
+        for (const o of ops) {
+          // an opening belongs to the band its middle lies in
+          const mid = o.sill + o.height / 2;
+          if (two && (mid < split!) !== (band.layer === 'base')) continue;
+          const { u0: a0, u1: a1 } = openingSpan(o, w);
+          if (o.shape === 'gable') {
+            const poly = openingPolygon(house, o, a0, a1);
+            shape.holes.push(pathOf(poly));
+            buildGableGlazing(B, poly, m);
+            continue;
+          }
+          const hole = new THREE.Path();
+          rectPath(hole, a0, Math.max(o.sill, base), a1, o.sill + o.height);
+          shape.holes.push(hole);
+          buildOpening(B, o, w, m, a0, a1);
+        }
+        const g = new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false });
+        B.add('plaster', transform(g, m));
+      });
     }
-    const g = new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false });
-    B.add('plaster', transform(g, m));
 
     // plinth band (slightly proud of the façade), split around openings that go below ±0
     const cuts = ops
@@ -283,24 +354,18 @@ export function buildHouse(house: HouseDef): HouseParts {
     s.lineTo(0, eaveUnder);
     s.closePath();
     const g = new THREE.ExtrudeGeometry(s, { depth: t, bevelEnabled: false });
-    B.add('plaster', transform(g, m));
+    B.add('plaster', transform(g, m), uf ? 'upper' : 'base');
   }
 
   // ---------- roof ----------
-  buildRoof(B, house);
+  B.in('roof', () => buildRoof(B, house));
 
   // ---------- floor, ceiling, partitions ----------
   const outlineShape = new THREE.Shape(house.outline.map(([X, Y]) => new THREE.Vector2(...toLocal(house, X, Y))));
-  const uf = house.upperFloor;
   // double-height spaces and the stairwell cut through the ceiling and the upper slab
   const withVoids = () => {
     const s = new THREE.Shape(house.outline.map(([X, Y]) => new THREE.Vector2(...toLocal(house, X, Y))));
-    for (const vd of uf?.voids ?? []) {
-      const [ax, az] = toLocal(house, vd.x0, vd.y0), [bx, bz] = toLocal(house, vd.x1, vd.y1);
-      const h = new THREE.Path();
-      rectPath(h, ax, az, bx, bz);
-      s.holes.push(h);
-    }
+    for (const poly of uf?.voids ?? []) s.holes.push(pathOf(poly.map(([X, Y]) => toLocal(house, X, Y))));
     return s;
   };
   const flat = (s: THREE.Shape, y: number, up: boolean) => {
@@ -312,8 +377,8 @@ export function buildHouse(house: HouseDef): HouseParts {
   };
   if (uf) {
     const cut = withVoids();
-    B.add('floor', flat(cut, uf.level + 0.005, true));
-    B.add('interior', flat(cut, uf.level - uf.thickness, false));
+    B.add('floor', flat(cut, uf.level + 0.005, true), 'upper');
+    B.add('ceiling', flat(cut, uf.level - uf.thickness, false), 'upper');
   }
   {
     // ShapeGeometry is in XY; swap Y/Z so it lies in XZ (plan Y → +z), facing up
@@ -323,22 +388,29 @@ export function buildHouse(house: HouseDef): HouseParts {
     );
     for (let i = 0; i < g.attributes.normal.count; i++) g.attributes.normal.setXYZ(i, 0, 1, 0);
     B.add('floor', g.clone().translate(0, 0.005, 0));
-    if (uf) B.add('interior', flat(withVoids(), house.ceilingHeight, false));
+    // the ceiling goes with what is above it: the upper storey, or the roof of a single-storey house
+    if (uf) B.add('ceiling', flat(withVoids(), house.ceilingHeight, false), 'upper');
     else if (house.ceilingOutline) {
       const cs = new THREE.Shape(house.ceilingOutline.map(([X, Y]) => new THREE.Vector2(...toLocal(house, X, Y))));
-      B.add('interior', flat(cs, house.ceilingHeight, false));
+      B.add('ceiling', flat(cs, house.ceilingHeight, false), 'roof');
     } else {
       const ceil = g.clone().translate(0, house.ceilingHeight, 0);
       flipWinding(ceil);
       for (let i = 0; i < ceil.attributes.normal.count; i++) ceil.attributes.normal.setXYZ(i, 0, -1, 0);
-      B.add('interior', ceil);
+      B.add('ceiling', ceil, 'roof');
     }
   }
-  for (const [x1, y1, x2, y2] of house.partitions) {
-    const it = house.innerWallThickness / 2;
-    const xa = Math.min(x1, x2) - (x1 === x2 ? it : 0), xb = Math.max(x1, x2) + (x1 === x2 ? it : 0);
-    const ya = Math.min(y1, y2) - (y1 === y2 ? it : 0), yb = Math.max(y1, y2) + (y1 === y2 ? it : 0);
-    B.add('interior', box(xa, xb, ya, yb, 0, house.ceilingHeight));
+  if (house.interior) {
+    // real walls, doors, stairs, floor finishes and furniture; the attic's ceiling hides with the roof
+    buildInterior(house, (part, g, layer) => B.add(part, g, layer));
+    B.in('roof', () => buildAtticCeiling(B, house));
+  } else {
+    for (const [x1, y1, x2, y2] of house.partitions) {
+      const it = house.innerWallThickness / 2;
+      const xa = Math.min(x1, x2) - (x1 === x2 ? it : 0), xb = Math.max(x1, x2) + (x1 === x2 ? it : 0);
+      const ya = Math.min(y1, y2) - (y1 === y2 ? it : 0), yb = Math.max(y1, y2) + (y1 === y2 ? it : 0);
+      B.add('interior', box(xa, xb, ya, yb, 0, house.ceilingHeight));
+    }
   }
 
   // ---------- terrace, steps, porches ----------
@@ -353,24 +425,122 @@ export function buildHouse(house: HouseDef): HouseParts {
   }
 
   // ---------- chimneys ----------
+  // the stack inside the upper storey stays with it; from its ceiling up it hides with the roof
+  const stackCut = uf ? Math.max(house.ceilingHeight, uf.level + (house.interior?.upper?.height ?? house.wallTop - uf.level)) : house.ceilingHeight;
   for (const c of r.chimneys) {
-    B.add('plaster', box(c.x - c.w / 2, c.x + c.w / 2, c.y - c.d / 2, c.y + c.d / 2, house.ceilingHeight, c.top));
-    B.add('trim', box(c.x - c.w / 2 - 0.05, c.x + c.w / 2 + 0.05, c.y - c.d / 2 - 0.05, c.y + c.d / 2 + 0.05, c.top, c.top + 0.06));
+    const cb = (h0: number, h1: number) => box(c.x - c.w / 2, c.x + c.w / 2, c.y - c.d / 2, c.y + c.d / 2, h0, h1);
+    if (uf && stackCut > house.ceilingHeight) B.add('plaster', cb(house.ceilingHeight, Math.min(stackCut, c.top)), 'upper');
+    if (c.top > stackCut) B.add('plaster', cb(stackCut, c.top), 'roof');
+    B.add('trim', box(c.x - c.w / 2 - 0.05, c.x + c.w / 2 + 0.05, c.y - c.d / 2 - 0.05, c.y + c.d / 2 + 0.05, c.top, c.top + 0.06), 'roof');
   }
 
   // ---------- pergolas, canopies, posts ----------
   for (const e of house.extras ?? []) B.add(e.part, box(e.x0, e.x1, e.y0, e.y1, e.h0, e.h1));
 
   // ---------- façade zones (render colour band, wood cladding), cut around openings ----------
-  for (const z of house.facadeZones ?? []) buildZone(B, house, z);
+  for (const z of house.facadeZones ?? []) B.in(split !== null && z.h0 >= split ? 'upper' : 'base', () => buildZone(B, house, z));
 
   // ---------- roof windows ----------
   if (house.roofWindows?.length) {
     const faces = roofFaces(house);
-    for (const rw of house.roofWindows) buildRoofWindow(B, house, faces, rw.at, rw.width, rw.length);
+    B.in('roof', () => { for (const rw of house.roofWindows!) buildRoofWindow(B, house, faces, rw.at, rw.width, rw.length); });
   }
 
-  return B.build();
+  return B;
+}
+
+/** keep the part of a convex polygon where the linear function g is ≥ 0 */
+function clipConvex(poly: Vec2[], g: (p: Vec2) => number): Vec2[] {
+  const out: Vec2[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length], ga = g(a), gb = g(b);
+    if (ga >= 0) out.push(a);
+    if ((ga >= 0) !== (gb >= 0)) {
+      const k = ga / (ga - gb);
+      out.push([a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k]);
+    }
+  }
+  return out;
+}
+
+/** an orthogonal outline as rectangles [x0, y0, x1, y1] (horizontal bands between its vertex rows) */
+export function outlineRects(outline: Vec2[]): [number, number, number, number][] {
+  const ys = [...new Set(outline.map((p) => p[1]))].sort((a, b) => a - b);
+  const out: [number, number, number, number][] = [];
+  for (let k = 0; k + 1 < ys.length; k++) {
+    const y = (ys[k] + ys[k + 1]) / 2;
+    const xs: number[] = [];
+    for (let i = 0; i < outline.length; i++) {
+      const a = outline[i], b = outline[(i + 1) % outline.length];
+      if (Math.abs(a[0] - b[0]) < 1e-9 && (a[1] - y) * (b[1] - y) < 0) xs.push(a[0]);
+    }
+    xs.sort((a, b) => a - b);
+    for (let i = 0; i + 1 < xs.length; i += 2) out.push([xs[i], ys[k], xs[i + 1], ys[k + 1]]);
+  }
+  return out;
+}
+
+/**
+ * Ceiling of a usable attic: plasterboard under the roof slopes, and a flat ceiling where the roof
+ * is higher than the storey's height. It covers the rooms' outline (the inner faces of the outer
+ * walls), voids included; along the eaves walls a lining closes the strip between the top of the
+ * wall and the ceiling, so the knee wall reaches the slope.
+ */
+function buildAtticCeiling(B: Bucket, house: HouseDef) {
+  const uf = house.upperFloor, st = house.interior?.upper;
+  if (!uf || !st) return;
+  const flatH = uf.level + st.height, drop = ceilingDrop(house);
+  const pos: number[] = [];
+  const emit = (poly: Vec2[], h: (p: Vec2) => number) => {
+    if (poly.length < 3) return;
+    for (let k = 1; k + 1 < poly.length; k++) {
+      const tri = [poly[0], poly[k], poly[k + 1]].map((p) => {
+        const [lx, lz] = toLocal(house, p[0], p[1]);
+        return new THREE.Vector3(lx, h(p), lz);
+      });
+      const n = new THREE.Vector3().crossVectors(tri[1].clone().sub(tri[0]), tri[2].clone().sub(tri[0]));
+      if (n.lengthSq() < 1e-12) continue;
+      for (const v of n.y < 0 ? tri : [tri[0], tri[2], tri[1]]) pos.push(v.x, v.y, v.z); // facing down
+    }
+  };
+  const inner = offsetPolygon(house.outline, -house.wallThickness) as Vec2[];
+  const ceilAt = (p: Vec2) => Math.min(flatH, (roofTopAt(house, p[0], p[1]) ?? Infinity) - drop);
+  house.walls.forEach((w, i) => {
+    if (w.open || gableOfWall(house, w)) return; // a gable wall runs up to the roof itself
+    const a = inner[i], b = inner[(i + 1) % inner.length], top = w.top ?? house.wallTop;
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(L / 0.25));
+    for (let k = 0; k < n; k++) {
+      const p: Vec2 = [a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n], q: Vec2 = [a[0] + ((b[0] - a[0]) * (k + 1)) / n, a[1] + ((b[1] - a[1]) * (k + 1)) / n];
+      const cp = ceilAt(p), cq = ceilAt(q);
+      if (Math.max(cp, cq) <= top + 1e-3) continue;
+      const P = (pt: Vec2, y: number) => { const [lx, lz] = toLocal(house, pt[0], pt[1]); return new THREE.Vector3(lx, y, lz); };
+      const quad = [P(p, top), P(q, top), P(q, Math.max(cq, top)), P(p, Math.max(cp, top))];
+      // facing into the room (the inward side of an outline edge, as in wallMatrix)
+      const inward = new THREE.Vector3(-(b[1] - a[1]), 0, b[0] - a[0]);
+      const nrm = new THREE.Vector3().crossVectors(quad[1].clone().sub(quad[0]), quad[2].clone().sub(quad[0]));
+      const order = nrm.dot(inward) > 0 ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
+      for (const j of order) pos.push(quad[j].x, quad[j].y, quad[j].z);
+    }
+  });
+  const rects = outlineRects(inner);
+  for (const face of roofFaces(house)) {
+    const under = (p: Vec2) => face.h(p[0], p[1]) - drop;
+    for (const [x0, y0, x1, y1] of rects) {
+      let poly = face.poly;
+      poly = clipConvex(poly, (p) => p[0] - x0);
+      poly = clipConvex(poly, (p) => x1 - p[0]);
+      poly = clipConvex(poly, (p) => p[1] - y0);
+      poly = clipConvex(poly, (p) => y1 - p[1]);
+      if (poly.length < 3) continue;
+      emit(clipConvex(poly, (p) => flatH - under(p)), under); // under the slope
+      emit(clipConvex(poly, (p) => under(p) - flatH), () => flatH); // flat part
+    }
+  }
+  if (!pos.length) return;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  B.add('ceiling', g);
 }
 
 /** window/door frame, glass, sill — built in wall-local space then transformed */

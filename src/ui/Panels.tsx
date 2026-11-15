@@ -13,7 +13,7 @@ import { centroid, polygonArea, toSite } from '../placement/geom2d';
 import { f } from './format';
 import type { GardenKind } from '../store';
 
-const KIND_NAMES: Record<GardenKind, string> = { driveway: 'podjazd', path: 'ścieżka', patio: 'patio', flowerbed: 'rabata', gravel: 'żwir' };
+const KIND_NAMES: Record<GardenKind, string> = { driveway: 'podjazd', path: 'ścieżka', patio: 'patio', flowerbed: 'rabata', gravel: 'żwir', vegbed: 'grządka podwyższona' };
 
 const fmtTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(Math.round(m % 60)).padStart(2, '0')}`;
 const MONTHS = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'];
@@ -113,6 +113,8 @@ export function PreviewPanel() {
       </Section>
 
       <Section title="Wyświetlanie">
+        <Toggle label="Ukryj dach (widok wnętrz)" value={!!layers.hideRoof || !!layers.hideUpper} onChange={(v) => setLayers(v ? { hideRoof: true } : { hideRoof: false, hideUpper: false })} />
+        {house.upperFloor && <Toggle label="Ukryj piętro (poddasze) – widok parteru" value={!!layers.hideUpper} onChange={(v) => setLayers({ hideUpper: v })} />}
         <Toggle label="Trawnik na działce (zamiast obecnego pola)" value={layers.parcelLawn} onChange={(v) => setLayers({ parcelLawn: v })} />
         <Toggle label="Zdjęcie satelitarne jako teren" value={layers.ortho} onChange={(v) => setLayers({ ortho: v })} />
         <Toggle label="Drogi (OpenStreetMap)" value={layers.roads !== false} onChange={(v) => setLayers({ roads: v })} />
@@ -181,7 +183,7 @@ export function PlacementPanel() {
   ];
   const tools: [Tool, string][] = [
     ['select', 'Przesuń dom'], ['driveway', 'Podjazd'], ['path', 'Ścieżka'], ['patio', 'Patio'], ['flowerbed', 'Rabata'], ['gravel', 'Żwir'],
-    ['deciduous', 'Drzewo'], ['birch', 'Brzoza'], ['conifer', 'Iglak'], ['shrub', 'Krzew'], ['fence', 'Ogrodzenie'], ['buildingLine', 'Linia zabudowy'], ['measure', 'Pomiar'], ['car', 'Samochód'],
+    ['deciduous', 'Drzewo'], ['birch', 'Brzoza'], ['conifer', 'Iglak'], ['thuja', 'Tuja'], ['shrub', 'Krzew'], ['globe', 'Drzewko kuliste'], ['maple', 'Klon czerwony'], ['hydrangea', 'Hortensja'], ['grass', 'Trawa ozdobna'], ['lavender', 'Lawenda'], ['boxwood', 'Bukszpan'], ['fence', 'Ogrodzenie'], ['buildingLine', 'Linia zabudowy'], ['measure', 'Pomiar'], ['car', 'Samochód'],
   ];
 
   const center = () => {

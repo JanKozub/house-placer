@@ -134,7 +134,42 @@ export const textures = {
       },
       1.2,
     ),
+  /** stone with soft veins (worktops, the fireplace wall) */
+  stone: (base: string) =>
+    canvasTex(
+      512,
+      (ctx, s) => {
+        noise(ctx, s, base, 0.06, 21);
+        const r = rng(23);
+        for (let k = 0; k < 9; k++) {
+          ctx.strokeStyle = k % 3 ? `rgba(255,246,230,${0.1 + r() * 0.12})` : `rgba(70,45,25,${0.08 + r() * 0.1})`;
+          ctx.lineWidth = 1 + r() * 3;
+          ctx.beginPath();
+          let x = r() * s, y = 0;
+          ctx.moveTo(x, y);
+          while (y < s) { x += (r() - 0.5) * 70; y += 25 + r() * 40; ctx.lineTo(x, y); }
+          ctx.stroke();
+        }
+      },
+      2,
+    ),
+  /** woven rug */
+  rug: (base: string) =>
+    canvasTex(
+      256,
+      (ctx, s) => {
+        noise(ctx, s, base, 0.18, 31);
+        ctx.strokeStyle = 'rgba(90,70,45,0.18)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < s; i += 6) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(s, i); ctx.stroke(); }
+      },
+      0.5,
+    ),
+  concrete: () => canvasTex(512, (ctx, s) => noise(ctx, s, '#a9a9a6', 0.1, 41), 2),
 };
+
+/** self-illumination of ceilings by day */
+export const CEILING_GLOW = 0.45;
 
 export interface MaterialSet {
   get: (p: PartName) => THREE.Material;
@@ -162,9 +197,31 @@ export function createMaterials(palette: Palette): MaterialSet {
     sill: new THREE.MeshStandardMaterial({ color: palette.frames, roughness: 0.4, metalness: 0.5 }),
     floor: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6, map: textures.wood('#c9a57a') }),
     interior: new THREE.MeshStandardMaterial({ color: '#f4f1ec', roughness: 0.95 }),
+    // ceilings face down, where the sky map is dark: a little self-illumination stands in for the light
+    // bounced off the floor (HouseModel turns it down at night)
+    ceiling: new THREE.MeshStandardMaterial({ color: '#f4f1ec', roughness: 0.95, emissive: '#f4f1ec', emissiveIntensity: CEILING_GLOW }),
     paving: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.85, map: textures.paving(palette.paving) }),
     gutter: new THREE.MeshStandardMaterial({ color: palette.roof, roughness: 0.4, metalness: 0.7, side: THREE.DoubleSide }),
     accent: new THREE.MeshStandardMaterial({ color: palette.accent ?? DEFAULT_PALETTE.accent, roughness: 0.9, bumpMap: plasterBump, bumpScale: 0.6 }),
+    // interiors: a warm, light scheme (cream walls, oak, beige stone, graphite units), not part of the palette
+    tile: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.45, map: textures.paving('#d9cfc0', 0.6) }),
+    tileDark: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5, map: textures.paving('#6f6a64', 0.6) }),
+    concrete: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9, map: textures.concrete() }),
+    oak: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6, map: textures.wood('#c8a273') }),
+    cabinet: new THREE.MeshStandardMaterial({ color: '#efebe4', roughness: 0.55 }),
+    cabinetDark: new THREE.MeshStandardMaterial({ color: '#34363a', roughness: 0.55 }),
+    stone: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.35, map: textures.stone('#a98f74') }),
+    fabric: new THREE.MeshStandardMaterial({ color: '#d9d0c1', roughness: 1 }),
+    fabricDark: new THREE.MeshStandardMaterial({ color: '#8a6a50', roughness: 0.95 }),
+    linen: new THREE.MeshStandardMaterial({ color: '#f3f0ea', roughness: 1 }),
+    steel: new THREE.MeshStandardMaterial({ color: '#b8bcc0', roughness: 0.3, metalness: 0.9 }),
+    ceramic: new THREE.MeshStandardMaterial({ color: '#f7f7f5', roughness: 0.15 }),
+    black: new THREE.MeshStandardMaterial({ color: '#17181a', roughness: 0.35, metalness: 0.2 }),
+    mirror: new THREE.MeshStandardMaterial({ color: '#dfe6ea', roughness: 0.03, metalness: 1 }),
+    plant: new THREE.MeshStandardMaterial({ color: '#4d7a45', roughness: 0.9 }),
+    rug: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, map: textures.rug('#cdbfa6') }),
+    door: new THREE.MeshStandardMaterial({ color: '#f6f4ef', roughness: 0.5 }),
+    fire: new THREE.MeshStandardMaterial({ color: '#ffb35c', emissive: '#ff8a2a', emissiveIntensity: 1.6, roughness: 0.6 }),
   };
   return {
     get: (p) => m[p],

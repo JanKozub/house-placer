@@ -9,10 +9,11 @@ import { ambrozja17Detached } from './ambrozja17-detached';
 import { argania2 } from './argania2';
 import { argania2Low, argania2Mid } from './argania2-low';
 import type { HouseDef } from './types';
+import { DEFAULT_PROJECT } from '../site/sitePlan';
 
 export const HOUSE_LIST: HouseDef[] = [ambrozja17, ambrozja17Detached, grela, argania2, argania2Low, argania2Mid];
 export const HOUSES: Record<string, HouseDef> = Object.fromEntries(HOUSE_LIST.map((h) => [h.id, h]));
-export const DEFAULT_HOUSE_ID = argania2.id;
+export const DEFAULT_HOUSE_ID = DEFAULT_PROJECT;
 
 export const houseById = (id: string | undefined): HouseDef => HOUSES[id ?? ''] ?? HOUSES[DEFAULT_HOUSE_ID];
 

@@ -127,6 +127,87 @@ export interface FacadeZone {
   finish: 'accent' | 'wood';
 }
 
+// ---------------------------------------------------------------------------------------------
+// Interiors: partition walls with doors, stairs, floor finishes and furniture, per storey.
+// ---------------------------------------------------------------------------------------------
+
+/** which way an item's front faces in the plan: N = −Y (garden side as drawn), S = +Y, E = +X, W = −X */
+export type Facing = 'N' | 'S' | 'E' | 'W';
+
+export interface InteriorDoor {
+  /** centre of the opening, metres along the wall from `a` */
+  at: number;
+  width: number;
+  /** leaf: hinged (default), sliding along the wall, folding in two, or none (an open doorway) */
+  kind?: 'swing' | 'sliding' | 'fold' | 'open';
+  /** which end of the opening carries the hinges (sliding: the end the leaf is parked beyond) */
+  hinge?: 'a' | 'b';
+  /** side the leaf opens to, as a plan direction */
+  opens: Facing;
+}
+
+export interface InteriorWall {
+  a: Vec2;
+  b: Vec2;
+  /** thickness (default: house.innerWallThickness) */
+  t?: number;
+  doors?: InteriorDoor[];
+  /** a low wall of this height instead of a full-height one */
+  h?: number;
+  /** a glass balustrade (needs `h`) with a handrail */
+  glass?: boolean;
+}
+
+export type FloorFinish = 'tile' | 'tileDark' | 'concrete';
+
+export type FurnitureKind =
+  | 'dining' | 'sofa' | 'ottoman' | 'coffeeTable' | 'rug' | 'tv' | 'console' | 'fireplace' | 'plant' | 'pendant'
+  | 'island' | 'stool' | 'counter' | 'tall' | 'shelf' | 'appliance' | 'wardrobe' | 'bench' | 'desk' | 'armchair'
+  | 'bed' | 'nightstand' | 'dresser' | 'wc' | 'basin' | 'shower' | 'bathtub' | 'boiler' | 'tank' | 'washer' | 'rack' | 'rail' | 'block';
+
+export interface FurnitureItem {
+  kind: FurnitureKind;
+  /** centre in plan coords */
+  at: Vec2;
+  face?: Facing;
+  /** width (across the front), depth (front to back) and height, where the kind allows them */
+  w?: number;
+  d?: number;
+  h?: number;
+  /** kind-specific variant: 'sink' / 'hob' (counter), 'fridge' / 'oven' (tall), 'double' (bed, basin), seats (dining) */
+  opt?: string | number;
+  /** colour variant: dark fronts / dark upholstery */
+  dark?: boolean;
+}
+
+/** one straight flight: `treads` steps of `going` from `from` (centre of the first riser) in direction `dir` */
+export interface StairFlight {
+  from: Vec2; dir: Facing; width: number; treads: number; going: number; rise: number; startLevel: number;
+  /** the first so many steps are solid down to the floor (nothing under them) */
+  solid?: number;
+}
+export interface StairLanding { x0: number; x1: number; y0: number; y1: number; level: number }
+
+export interface Storey {
+  /** finished floor above ±0.00 */
+  level: number;
+  /** flat ceiling above this storey's floor; under a roof the sloped ceiling cuts walls and tall furniture */
+  height: number;
+  /** under a roof: height of the knee wall, i.e. of the sloped ceiling at the inner face of the eaves walls */
+  knee?: number;
+  walls: InteriorWall[];
+  /** floor finishes that are not the default timber boards: [x0, y0, x1, y1] */
+  floors: { rect: [number, number, number, number]; finish: FloorFinish }[];
+  items: FurnitureItem[];
+}
+
+export interface Interior {
+  ground: Storey;
+  /** the storey on `upperFloor` (a usable attic) */
+  upper?: Storey;
+  stairs?: { flights: StairFlight[]; landings: StairLanding[] };
+}
+
 /** an extra box in plan coords (pergola beams, canopies, posts) */
 export interface ExtraBox { x0: number; x1: number; y0: number; y1: number; h0: number; h1: number; part: 'plaster' | 'accent' | 'wood' | 'frame' | 'trim' | 'soffit' | 'plinth' | 'paving' }
 
@@ -196,8 +277,8 @@ export interface HouseDef {
   annexes?: Annex[];
 
   // ---- optional: houses with a usable attic and richer façades (Argania 2) ----
-  /** slab of the upper storey (walkable attic); voids are double-height spaces and the stairwell */
-  upperFloor?: { level: number; thickness: number; voids?: { x0: number; x1: number; y0: number; y1: number }[] };
+  /** slab of the upper storey (walkable attic); voids are double-height spaces and the stairwell (plan polygons) */
+  upperFloor?: { level: number; thickness: number; voids?: Vec2[][] };
   /** rooms of the upper storey (info only; the plan view shows the ground floor) */
   upperRooms?: { name: string; area: number }[];
   roofWindows?: RoofWindow[];
@@ -205,6 +286,8 @@ export interface HouseDef {
   ceilingOutline?: Vec2[];
   facadeZones?: FacadeZone[];
   extras?: ExtraBox[];
+  /** real partition walls, doors, stairs, floor finishes and furniture (replaces `partitions` in 3D) */
+  interior?: Interior;
 
   // ---- optional: split-level houses ----
   /** building platform in plan coords (default: the bounding rectangle with a 1 m margin) */

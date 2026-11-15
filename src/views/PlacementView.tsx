@@ -21,8 +21,8 @@ const OVER = 200; // overlay height (scene units) — drawn without depth test
 const FIXED_SUN = new THREE.Vector3(-0.35, 0.85, 0.4).normalize();
 
 const AREA_TOOLS: GardenKind[] = ['driveway', 'path', 'patio', 'flowerbed', 'gravel'];
-const TREE_TOOLS: TreeKind[] = ['deciduous', 'conifer', 'birch', 'shrub'];
-const TREE_H: Record<TreeKind, number> = { deciduous: 7, conifer: 5, birch: 9, shrub: 1.3 };
+const TREE_TOOLS: TreeKind[] = ['deciduous', 'conifer', 'birch', 'shrub', 'thuja', 'grass', 'lavender', 'hydrangea', 'boxwood', 'globe', 'maple'];
+const TREE_H: Record<TreeKind, number> = { deciduous: 7, conifer: 5, birch: 9, shrub: 1.3, thuja: 2.2, grass: 1.2, lavender: 0.45, hydrangea: 1.1, boxwood: 0.7, globe: 3.4, maple: 2.6, rock: 0.5, firepit: 0.35 };
 
 const v3 = (p: P2, y = OVER): [number, number, number] => [p[0], y, p[1]];
 const ring = (pts: P2[], y = OVER) => [...pts, pts[0]].map((p) => v3(p, y));

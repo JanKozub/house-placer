@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Site } from '../geo/site';
@@ -83,25 +83,138 @@ function stripAttrs(g: THREE.BufferGeometry) {
 
 const trunkMat = new THREE.MeshStandardMaterial({ color: '#5b4632', roughness: 0.95 });
 const birchMat = new THREE.MeshStandardMaterial({ color: '#e8e4dc', roughness: 0.8 });
-const leafMats: Record<TreeKind, THREE.MeshStandardMaterial> = {
+const leafMats: Partial<Record<TreeKind, THREE.MeshStandardMaterial>> = {
   deciduous: new THREE.MeshStandardMaterial({ color: '#4f7a2e', roughness: 0.85, flatShading: true }),
   birch: new THREE.MeshStandardMaterial({ color: '#7ea04a', roughness: 0.85, flatShading: true }),
   conifer: new THREE.MeshStandardMaterial({ color: '#2f5230', roughness: 0.9, flatShading: true }),
   shrub: new THREE.MeshStandardMaterial({ color: '#557f35', roughness: 0.9, flatShading: true }),
 };
 
+/** kinds drawn one mesh per tree (few, large); every other kind goes into one merged mesh */
+const BIG = new Set<TreeKind>(['deciduous', 'birch', 'conifer', 'shrub']);
+export const isBigTree = (k: TreeKind) => BIG.has(k);
+
+/** one material for all small plants and garden objects: colours are per vertex */
+const plantMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9, flatShading: true, vertexColors: true });
+
+/** paint a geometry: one colour, or a gradient from `c0` at the bottom to `c1` at the top */
+function tint(g: THREE.BufferGeometry, c0: string, c1 = c0, shade = 0) {
+  const ng = stripAttrs(g.index ? g.toNonIndexed() : g);
+  const p = ng.getAttribute('position');
+  let y0 = Infinity, y1 = -Infinity;
+  for (let i = 0; i < p.count; i++) { y0 = Math.min(y0, p.getY(i)); y1 = Math.max(y1, p.getY(i)); }
+  const a = new THREE.Color(c0), b = new THREE.Color(c1), c = new THREE.Color();
+  const col = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) {
+    c.copy(a).lerp(b, y1 > y0 ? (p.getY(i) - y0) / (y1 - y0) : 0).offsetHSL(0, 0, shade);
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  ng.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return ng;
+}
+
+/**
+ * Small plants and garden objects, in their own frame (standing at the origin), coloured per vertex:
+ * thuja 'Smaragd' (a narrow cone, dense to the ground), ornamental grass, lavender, hydrangea,
+ * clipped box ball, ball-headed tree on a stem, red Japanese maple, boulder, fire bowl.
+ * Slightly different from plant to plant, the same on every visit.
+ */
+export function plantGeometry(t: Tree): THREE.BufferGeometry {
+  const r = rng(t.id), H = t.height, parts: THREE.BufferGeometry[] = [];
+  const shade = (r() - 0.5) * 0.05;
+  const jitter = (g: THREE.BufferGeometry, k = 0.14) => {
+    const p = g.getAttribute('position');
+    for (let i = 0; i < p.count; i++) { const f = 1 - k / 2 + r() * k; p.setXYZ(i, p.getX(i) * f, p.getY(i), p.getZ(i) * f); }
+    return g;
+  };
+  const ball = (rad: number, x: number, y: number, z: number, sy = 1, detail = 1) => new THREE.IcosahedronGeometry(rad, detail).scale(1, sy, 1).translate(x, y, z);
+  const lathe = (profile: [number, number][], R: number, seg = 8) => new THREE.LatheGeometry(profile.map(([k, y]) => new THREE.Vector2(R * k, H * y)), seg, r() * Math.PI);
+  switch (t.kind) {
+    case 'thuja': {
+      const R = Math.min(0.42, H * 0.18) * (0.92 + r() * 0.16);
+      parts.push(tint(jitter(lathe([[0.55, 0.02], [0.95, 0.12], [1, 0.3], [0.86, 0.55], [0.55, 0.8], [0.2, 0.95], [0.001, 1]], R)), '#3a6a3b', '#4a7d45', shade));
+      break;
+    }
+    case 'grass': {
+      // a tuft of long blades arching outwards, green at the base and straw-coloured at the tips
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2 + r() * 0.6, lean = i < 3 ? 0.06 + r() * 0.08 : 0.22 + r() * 0.26, h = H * (0.72 + r() * 0.3);
+        parts.push(tint(new THREE.ConeGeometry(H * 0.055, h, 4).translate(0, h / 2, 0).rotateZ(lean).rotateY(a), '#4f8038', '#cfc587', shade));
+      }
+      break;
+    }
+    case 'lavender':
+      parts.push(tint(jitter(ball(H * 0.75, 0, H * 0.45, 0, 0.7), 0.2), '#58764a', '#7a5fb0', shade));
+      break;
+    case 'boxwood':
+      parts.push(tint(ball(H * 0.5, 0, H * 0.5, 0, 1, 2), '#2f5a2c', '#3b6d35', shade));
+      break;
+    case 'hydrangea': {
+      parts.push(tint(jitter(ball(H * 0.5, 0, H * 0.45, 0, 0.85), 0.2), '#3f6a35', '#4f7d3d', shade));
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2 + r(), d = i ? H * 0.32 : 0;
+        parts.push(tint(ball(H * 0.17, Math.cos(a) * d, H * (i ? 0.72 : 0.9), Math.sin(a) * d), '#f1eddf', '#fbf9f1'));
+      }
+      break;
+    }
+    case 'globe': {
+      // a clipped ball on a clear stem (klon kulisty)
+      parts.push(tint(new THREE.CylinderGeometry(0.045, 0.06, H * 0.56, 7).translate(0, H * 0.28, 0), '#5b4632'));
+      parts.push(tint(ball(H * 0.26, 0, H * 0.74, 0, 1, 2), '#3f6d30', '#5a8d3e', shade));
+      break;
+    }
+    case 'maple': {
+      // low and wide, red-leaved (klon palmowy)
+      parts.push(tint(new THREE.CylinderGeometry(0.03, 0.06, H * 0.5, 6).translate(0, H * 0.25, 0), '#4a3626'));
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + r(), d = i ? H * 0.3 : 0;
+        parts.push(tint(jitter(ball(H * (i ? 0.26 : 0.3), Math.cos(a) * d, H * (i ? 0.62 : 0.78), Math.sin(a) * d, 0.7), 0.2), '#8c2a26', '#b8433a', shade));
+      }
+      break;
+    }
+    case 'rock':
+      parts.push(tint(jitter(ball(H * 0.75, 0, H * 0.35, 0, 0.62), 0.35), '#84827d', '#a3a19b', shade));
+      break;
+    case 'firepit': {
+      // a ring of stone with a steel bowl and embers
+      parts.push(tint(new THREE.CylinderGeometry(H * 1.5, H * 1.6, H, 14).translate(0, H / 2, 0), '#8d8a84', '#a09d96'));
+      parts.push(tint(new THREE.CylinderGeometry(H * 1.2, H * 1.2, 0.02, 14).translate(0, H + 0.011, 0), '#26221f'));
+      parts.push(tint(new THREE.ConeGeometry(H * 0.5, H * 0.9, 6).translate(0, H * 1.45, 0), '#e2571c', '#ffc24a'));
+      break;
+    }
+    default:
+      parts.push(tint(ball(Math.max(0.2, H * 0.4), 0, H * 0.4, 0), '#557f35'));
+  }
+  return mergeGeometries(parts)!;
+}
+
 export function Trees({ site, platform }: { site: Site; platform: PlatformSpec | PlatformSpec[] | null }) {
-  const trees = useStore((s) => s.trees);
+  const all = useStore((s) => s.trees);
+  const trees = useMemo(() => all.filter((t) => isBigTree(t.kind)), [all]);
   const geoms = useMemo(() => new Map(trees.map((t) => [t.id + t.kind + t.height, treeGeometry(t)])), [trees]);
+  // hedges, perennials and garden objects are many and small: one merged mesh for all of them,
+  // standing on the shaped ground. Their own shapes are kept, only the placing is redone on a move.
+  const shapes = useMemo(() => new Map(all.filter((t) => !isBigTree(t.kind)).map((t) => [t, plantGeometry(t)])), [all]);
+  useEffect(() => () => shapes.forEach((g) => g.dispose()), [shapes]);
+  const hedge = useMemo(() => {
+    const parts = [...shapes].map(([t, g]) => g.clone().translate(t.x, carvedHeight(site, t.x, t.z, platform) - site.baseH - 0.04, t.z));
+    if (!parts.length) return null;
+    const g = mergeGeometries(parts);
+    parts.forEach((q) => q.dispose());
+    g?.computeVertexNormals();
+    return g;
+  }, [shapes, site, platform]);
+  useEffect(() => () => hedge?.dispose(), [hedge]);
   return (
     <group name="trees">
+      {hedge && <mesh geometry={hedge} material={plantMat} castShadow receiveShadow name="plants" />}
       {trees.map((t) => {
         const g = geoms.get(t.id + t.kind + t.height)!;
         const y = carvedHeight(site, t.x, t.z, platform) - site.baseH;
         return (
           <group key={t.id} position={[t.x, y - 0.05, t.z]}>
             {g.trunk && <mesh geometry={g.trunk} material={t.kind === 'birch' ? birchMat : trunkMat} castShadow receiveShadow />}
-            <mesh geometry={g.crown} material={leafMats[t.kind]} castShadow receiveShadow />
+            <mesh geometry={g.crown} material={leafMats[t.kind]!} castShadow receiveShadow />
           </group>
         );
       })}

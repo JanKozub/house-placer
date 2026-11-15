@@ -62,7 +62,9 @@ If no imagery is available, the ground falls back to a synthetic field texture.
 
 ## Default position (PZT)
 
-New visitors start on Dom w Arganiach 2, placed as in the land-development plan "PZT koncepcja" (2026-11-10), with ±0.00 = 357.00 m a.s.l. Returning visitors keep their own changes. "Ustaw wg PZT" in the placement tab puts the house back. The position in `src/site/sitePlan.ts` was measured from the drawing. The map's plot outline was fitted to the GUGiK parcel, agreeing to 5–10 cm. Then the house's outer walls were fitted to the drawn walls. The back-left corner comes out 10.87 m from the south-west boundary, as labelled on the map.
+New visitors start on the compromise variant of Dom w Arganiach 2 (see below), with the garden described under "Garden". Returning visitors are switched to it once, and each project keeps the position they gave it.
+
+Dom w Arganiach 2 itself is placed as in the land-development plan "PZT koncepcja" (2026-11-10), with ±0.00 = 357.00 m a.s.l. "Ustaw wg PZT" in the placement tab puts the house back. The position in `src/site/sitePlan.ts` was measured from the drawing. The map's plot outline was fitted to the GUGiK parcel, agreeing to 5–10 cm. Then the house's outer walls were fitted to the drawn walls. The back-left corner comes out 10.87 m from the south-west boundary, as labelled on the map.
 
 The garden and the ground at the house are 5 cm below that floor (356.95, `design.level` in `public/site/survey.json`), so the house and the entrance are on one level, with no plinth and no entrance step (the catalogue has the ground at −0.32). The PZT prints no ground levels of its own, only ±0.00, so this level is good to about ±0.3 m.
 
@@ -93,6 +95,55 @@ Every project shows the planned access road to the gate: gravel, along the outsi
 Because the house stands elsewhere, this project has its own forecourt, gate, wicket and parked cars (`PROJECT_LAYOUT` in `src/site/sitePlan.ts`). They replace the PZT ones, by id, while the project is shown; the rest of the garden is shared as before. The forecourt is the same drawn yard moved with the house, which leaves a 2.5 m planting strip along the north-west fence, and the access road ends at the moved gate.
 
 Not modelled: the drain or shallow swale that the ground behind the terrace needs, since the lawn there falls towards the house. The levels are assumptions for the architect, as in the other variant.
+
+## Interiors and looking inside
+
+Dom w Arganiach 2 (and both of its variants) has a full interior, measured from archon.pl's interactive ground-floor and attic plans and described in `interior` in `src/house/argania2.ts`:
+
+- partition walls with their doors, drawn open as on the plans, including the sliding door of the vestibule and the folding door of the wardrobe
+- the dog-leg stairs: 16 risers of 19.1 cm, 12 up to a landing over the ground-floor wardrobe and 4 back up to the attic, with glass balustrades
+- the void over the living room, with a glass gallery
+- floor finishes: boards, tiles in the kitchen, vestibule, bathrooms and laundry, concrete in the garage and the boiler room
+- furniture and fixtures where the plans draw them: kitchen with a peninsula and three stools, dining table for eight, sofa, fireplace wall, bathrooms, beds, desks, wardrobes, boiler and tank
+- attic ceilings: flat at 2.55 m, sloped down to the 1.25 m knee wall, with walls and cupboards cut to the slope
+
+Finishes follow ARCHON+'s interior visualisations (cream walls, oak, beige stone, graphite tall units) and are not part of the colour palette. The furniture is built from simple shapes in `src/house/interior.ts`; a new project gets an interior by filling in `HouseDef.interior` (walls, doors, floors, items, stairs). Houses without one keep their approximate `partitions`.
+
+Two switches under "Wyświetlanie" open the house up:
+
+- "Ukryj dach" hides the roof, gutters, roof windows and the ceiling under the roof. On a single-storey house that shows the rooms; on Dom w Arganiach it shows the attic.
+- "Ukryj piętro (poddasze)" also hides the upper storey: its slab, rooms and the outer walls above the slab's underside, which leaves the ground floor open from above. It is offered only for houses with an upper storey.
+
+The geometry is built in three layers for this (`buildHouseLayers` in `src/house/geometry.ts`: base, upper, roof), and the outer walls are split at the underside of the attic slab.
+
+Known simplifications: the garage floor is drawn at the house floor level in the lowered-garage variants too, the catalogue's entrance is 140/210 (it was drawn 150/210 before), and the fireplace flue moved 35 cm to where the attic plan has it.
+
+## Garden
+
+Every visitor starts with the garden the family planned in November 2026 (`src/site/sitePlan.ts`; none of it is on the PZT):
+
+- Wiata + garage in the east corner (`DEFAULT_SHED`), where the family put it: its back 1.4–2.0 m from the south-east boundary, its garage end 1.0 m from the north-east one, 14.2 m from the house. That is closer than the 3–4 m a building of this size needs from a boundary, and the setback table shows it in red.
+- Its floor is at 356.10. The ground under it falls from 356.4 at the wiata end to 355.6 at the garage end, which is the lowest pocket of the plot. 356.10 is the level of the ground the drive arrives on, 10 cm above balanced cut and fill.
+- A 3.5 m drive (`SHED_DRIVE`) runs along the inside of the north-east fence from the forecourt straight to the garage door, on the surveyed ground (356.0–356.2). The shed's own apron (`lowerGround` in `src/house/outbuildings.ts`) is level for 1 m and then falls 1% away from the door, which fills the dip in front of it.
+- Thuja hedges (`THUJA_HEDGE`, tree kind `thuja`, "Tuja" in the planting tools): one tree every 75 cm, 75 cm inside the boundary, about 2.2 m tall, along the road behind the house and along both neighbours. The gate side stays open. All of them are drawn as one mesh.
+
+When stored data from an older version is opened, the hedges replace the trees planted before, the shed and its drive are added unless the visitor has a shed somewhere else, and the compromise variant opens.
+
+### The designed garden
+
+On top of that comes a full planting plan (`src/site/gardenPlan.ts`), written in the house's plan coordinates as the compromise variant stands. It follows the motifs modern Polish garden visualisations keep returning to:
+
+- every edge of the paving is planted: grasses and lavender between the fence and the drive to the shed, an avenue of four ball-headed trees over lavender on its garden side, box balls, grasses and a red maple along the lane to the entrance, and a gravel bed with hydrangeas between the forecourt and the north-west hedge
+- white hydrangeas with ornamental grasses in front of the thuja hedge along the road and along the north-west neighbour
+- beds at both ends of the terrace, and a rock garden with boulders on the bank behind it
+- a group of birches in the west corner and a second red maple by the terrace
+- on the south-east side: a slab path from the terrace to a gravel fire-pit circle with sitting stones, on to a patio in front of the wiata; four raised vegetable beds on gravel by the hedge; three fruit trees and a pine towards the road; a shade tree by the fire pit
+
+New plant kinds, all with their own planting tool: `grass`, `lavender`, `hydrangea`, `boxwood`, `globe` (ball-headed tree), `maple` (red). `rock` and `firepit` are objects placed the same way. Small plants are drawn as one mesh with per-vertex colours (`plantGeometry` in `src/site/Garden.tsx`). A new area kind, `vegbed`, is a raised bed: a timber frame filled with soil, with rows of vegetables.
+
+Paving now ends in a kerb (`src/site/GardenFeatures.tsx`): a 10 cm kerb, 4.5 cm proud, along every edge that has paving on one side only. There is none where a drive runs into the forecourt, at a wall or in a gateway, and the painted edge follows the same rule, so no line crosses the paving where two areas meet. Beds get a thin dark edging.
+
+The garden is laid out for the compromise variant; with another house project the beds near the house stay where they are.
 
 ## Extra buildings
 

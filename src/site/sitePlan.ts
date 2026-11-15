@@ -13,8 +13,9 @@ import { toSite, type P2, type Placement } from '../placement/geom2d';
 import { toLocal } from '../house/geometry';
 import { argania2 } from '../house/argania2';
 import { argania2Low, argania2Mid } from '../house/argania2-low';
+import { wiataGaraz } from '../house/outbuildings';
 import type { GroundDesign, Road } from '../geo/site';
-import type { Car, GardenArea } from '../store';
+import type { Car, GardenArea, Outbuilding, Tree } from '../store';
 
 export const PZT: { projectId: string; placement: Placement; floorLevel: number; source: string } = {
   projectId: 'argania2',
@@ -41,6 +42,9 @@ export const MID_PLACEMENT: Placement = (() => {
   const c = toSite([-MID_SHIFT, 0], PZT.placement); // along the back wall, away from the garage side
   return { ...PZT.placement, x: r2(c[0]), z: r2(c[1]) };
 })();
+
+/** the project a new visitor sees first */
+export const DEFAULT_PROJECT = argania2Mid.id;
 
 /** where a project starts when it has never been placed (others start where the last house stood) */
 export const PROJECT_START: Record<string, { placement: Placement; floorLevel: number }> = {
@@ -100,6 +104,8 @@ const fromPlanAt = ([X, Y]: P2, pl: Placement): P2 => {
   return [r2(p[0]), r2(p[1])];
 };
 const fromPlan = (p: P2): P2 => fromPlanAt(p, PZT.placement);
+/** a point given in the plan coordinates of Dom w Arganiach as the compromise variant stands (X along the back wall towards the north-west neighbour, Y towards the gate) */
+export const gardenPoint = (p: P2): P2 => fromPlanAt(p, MID_PLACEMENT);
 
 export const PZT_DRIVEWAY: GardenArea = {
   id: 'pzt-driveway',
@@ -210,3 +216,69 @@ export function accessRoads(parcel: P2[], roads: Road[], gates: Gate[] = PZT_GAT
     ...(wicket ? [link(wicket, -3, 1.2)] : []),
   ];
 }
+
+// ---------------------------------------------------------------------------------------------
+// The garden, as the family planned it in November 2026 (none of it is on the PZT):
+// the wiata + garage in the east corner with a drive along the north-east fence, and thuja hedges
+// along the road behind the house and along both neighbours.
+// ---------------------------------------------------------------------------------------------
+
+/** plot 664/2 in site-local metres (public/site/parcel.json, to the centimetre): east, north, west, …, south corners */
+export const PLOT: P2[] = [[31.8, 2.31], [0.94, -30.83], [-30.08, -11.56], [-12.69, 4.15], [4, 16.87], [7.38, 17.36]];
+
+/** a point `s` metres along plot edge `e` from its first vertex, `off` metres inside the boundary */
+export function onEdge(e: number, s: number, off: number): P2 {
+  const a = PLOT[e], b = PLOT[(e + 1) % PLOT.length];
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]), d: P2 = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
+  let n: P2 = [-d[1], d[0]];
+  const c = PLOT.reduce((m, p) => [m[0] + p[0] / PLOT.length, m[1] + p[1] / PLOT.length], [0, 0]);
+  if ((c[0] - a[0]) * n[0] + (c[1] - a[1]) * n[1] < 0) n = [-n[0], -n[1]];
+  return [r2(a[0] + d[0] * s + n[0] * off), r2(a[1] + d[1] * s + n[1] * off)];
+}
+
+/**
+ * Wiata + garage where the family placed it: in the east corner, its back 1.4–2.0 m from the
+ * south-east boundary and its garage end 1.0 m from the north-east one, the garage door facing
+ * along the fence towards the gate. (Read off the plan view: corner distances 2.02 / 1.38 / 1.04 m.)
+ * Floor at 356.10: the ground under it falls from 356.4 at the wiata end to 355.6 at the garage
+ * end, the lowest pocket of the plot, where rainwater collects. 356.10 is the level of the ground
+ * the drive arrives on (356.0–356.2), 10 cm above balanced cut and fill and 0.45 m above that
+ * pocket, which the apron in front of the door fills; the fill at the fence stays under 0.5 m.
+ */
+export const SHED_FLOOR_LEVEL = 356.1;
+export const DEFAULT_SHED: Outbuilding = { id: 'ob-wiata', kind: 'wiata-garaz', placement: { x: 21.6, z: 2.43, bearing: 325.3, mirror: false }, floorLevel: SHED_FLOOR_LEVEL };
+
+/**
+ * Drive to the shed's garage door: a 3.5 m strip along the inside of the north-east fence, from
+ * the forecourt at the gate straight to the door (which faces along the fence). It runs on the
+ * ground as surveyed, 356.0–356.2, and the shed's own apron carries it level over the dip in front
+ * of the door. It overlaps the forecourt, so it meets both the PZT's and the compromise variant's.
+ */
+export const SHED_DRIVE: GardenArea = (() => {
+  const door = (X: number): P2 => {
+    const p = toSite(toLocal(wiataGaraz, X, wiataGaraz.depth), DEFAULT_SHED.placement);
+    return [r2(p[0]), r2(p[1])];
+  };
+  return { id: 'shed-drive', kind: 'driveway', points: [door(0.3), onEdge(0, 34.5, 1.45), onEdge(0, 34.5, 4.95), door(4.05)] };
+})();
+
+/** plot edges with a hedge: the north-west neighbour, the road behind (three edges) and the south-east neighbour */
+export const HEDGE_EDGES = [1, 2, 3, 4, 5];
+export const HEDGE = { inset: 0.75, spacing: 0.75, height: 2.2 };
+
+/**
+ * Thuja hedges ('Smaragd', the usual Polish tuje): one tree every 75 cm, 75 cm inside the boundary,
+ * about 2.2 m tall, along the road behind the house and along both neighbours. The gate side
+ * stays open. Rows stop 0.9 m short of the corners so neighbouring rows do not grow into each other.
+ */
+export const THUJA_HEDGE: Tree[] = HEDGE_EDGES.flatMap((e) => {
+  const a = PLOT[e], b = PLOT[(e + 1) % PLOT.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const end = 0.9, n = Math.max(1, Math.round((L - 2 * end) / HEDGE.spacing));
+  const step = (L - 2 * end) / n;
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const [x, z] = onEdge(e, end + i * step, HEDGE.inset);
+    // a little variety in height, the same on every visit
+    const h = HEDGE.height * (0.93 + 0.14 * (((e * 31 + i * 17) % 10) / 9));
+    return { id: `tuja-${e}-${i}`, kind: 'thuja' as const, x, z, height: Math.round(h * 100) / 100 };
+  });
+});

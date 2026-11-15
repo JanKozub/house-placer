@@ -64,6 +64,7 @@ const PATTERN_COLORS: Record<PatternKind, { base: string; joint?: string; module
   patio: { base: '#c9c2b4', joint: 'rgba(80,75,70,0.45)', module: [0.6, 0.6], noise: 0.08 },
   flowerbed: { base: '#4d3a2a', noise: 0.35 },
   gravel: { base: '#b9b2a6', noise: 0.45 },
+  vegbed: { base: '#3b2b1e', noise: 0.3 },
   apron: { base: '#a9a49b', noise: 0.45 },
   asphalt: { base: '#5a5c5f', noise: 0.16 },
   dirtRoad: { base: '#a2967f', noise: 0.4 },
@@ -168,18 +169,23 @@ export function paintOverlay(
     ctx.fillStyle = pattern(ctx, 'apron', k);
     ctx.fill();
   }
-  const order: GardenKind[] = ['flowerbed', 'gravel', 'patio', 'path', 'driveway'];
+  const order: GardenKind[] = ['flowerbed', 'gravel', 'vegbed', 'patio', 'path', 'driveway'];
   for (const kind of order) {
-    for (const a of opts.garden.filter((g) => g.kind === kind)) {
-      if (a.points.length < 3) continue;
+    const areas = opts.garden.filter((g) => g.kind === kind && g.points.length >= 3);
+    // edging first, then the surfaces over it: where two areas of a kind overlap, the edge shows
+    // only around the two together (no line across the paving where a drive joins the forecourt)
+    for (const a of areas) {
       path(a.points);
-      ctx.fillStyle = pattern(ctx, kind, k);
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = kind === 'flowerbed' || kind === 'gravel' ? 'rgba(52,46,40,0.75)' : 'rgba(70,68,64,0.9)';
+      ctx.lineWidth = Math.max(1, (kind === 'flowerbed' || kind === 'gravel' ? 0.08 : 0.16) * k); // steel edging / kerb bed
+      ctx.stroke();
+    }
+    const fillStyle = pattern(ctx, kind, k);
+    for (const a of areas) {
+      path(a.points);
+      ctx.fillStyle = fillStyle;
       ctx.fill();
-      if (kind !== 'flowerbed' && kind !== 'gravel') {
-        ctx.strokeStyle = 'rgba(70,68,64,0.9)';
-        ctx.lineWidth = Math.max(1, 0.08 * k); // curb
-        ctx.stroke();
-      }
     }
   }
 }

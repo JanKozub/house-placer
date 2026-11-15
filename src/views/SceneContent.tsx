@@ -10,6 +10,7 @@ import { fillSkyTexture, horizonColor, makeSkyTexture } from '../site/sun';
 import { Landscape } from '../site/Landscape';
 import { Buildings } from '../site/Buildings';
 import { Cars } from '../site/Cars';
+import { GardenFeatures } from '../site/GardenFeatures';
 import { bumpMotion } from './motion';
 
 function SkyAndSun({ dir, night, target, shadows }: { dir: THREE.Vector3; night: number; target: THREE.Vector3; shadows: boolean }) {
@@ -97,6 +98,7 @@ export function SceneContent({ shadows = true, fixedSun }: { shadows?: boolean; 
   const dir = fixedSun ?? d.sun.dir;
   const night = fixedSun ? 0 : d.sun.night;
   const mats = useHouseMaterials();
+  const footprints = useMemo(() => [d.footprint, ...d.annexes.map((a) => a.footprint)], [d.footprint, d.annexes]);
 
   return (
     <>
@@ -113,6 +115,7 @@ export function SceneContent({ shadows = true, fixedSun }: { shadows?: boolean; 
         </group>
       ))}
       <Trees site={site} platform={d.platforms} />
+      <GardenFeatures site={site} platforms={d.platforms} footprints={footprints} />
       <Fence site={site} platform={d.platforms} />
       <Cars site={site} platforms={d.platforms} />
     </>

@@ -2,7 +2,7 @@
  * Extra buildings that can be added to the plot next to any house project (shared by all
  * projects, like the garden). Each is a HouseDef placed, rotated and levelled on its own.
  */
-import type { ExtraBox, HouseDef, HouseView } from './types';
+import type { ExtraBox, HouseDef, HouseView, Vec2 } from './types';
 
 export interface OutbuildingKind {
   kind: string;
@@ -66,6 +66,10 @@ const wiataExtras: ExtraBox[] = (() => {
   out.push({ x0: 10.5, x1: 11.6, y0: t, y1: 1.2, h0: 1.9, h1: 2.62, part: 'plinth' });
   return out;
 })();
+
+/** apron in front of the garage door (plan coords): its level part and the fall beyond it */
+export const APRON_FLAT = 1, APRON_FALL = 0.01, APRON_LENGTH = 9;
+const APRON: Vec2[] = [[0.3, D], [4.05, D], [4.05, D + APRON_LENGTH], [0.3, D + APRON_LENGTH]];
 
 export const wiataGaraz: HouseDef = {
   id: 'wiata-garaz',
@@ -156,6 +160,9 @@ export const wiataGaraz: HouseDef = {
   lights: [[9.9, 3.5]],
   wallLamps: [[XG + 0.3, D + 0.03]],
   views: NO_VIEWS,
+  // drive-in apron at the garage door: level for 1 m, then a 1% fall away from the door over 8 m,
+  // so the approach is never lower than the threshold and rain runs away from the garage
+  lowerGround: { outline: APRON, top: -0.02, fallFromY: D + APRON_FLAT, fall: APRON_FALL },
 };
 
 export const OUTBUILDINGS: OutbuildingKind[] = [{ kind: 'wiata-garaz', label: 'Wiata + garaż', letter: 'W', def: wiataGaraz }];

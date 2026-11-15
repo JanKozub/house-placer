@@ -2,11 +2,14 @@ import { useMemo } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { P2, Placement } from './placement/geom2d';
-import { layoutCars, layoutGarden, layoutGates, PROJECT_START, PZT, PZT_CARS, PZT_DRIVEWAY, PZT_FENCE_EDGES, PZT_GATES, type Gate } from './site/sitePlan';
+import { GARDEN_AREAS, GARDEN_PLANTS } from './site/gardenPlan';
+import { DEFAULT_PROJECT, DEFAULT_SHED, layoutCars, layoutGarden, layoutGates, PROJECT_START, PZT, PZT_CARS, PZT_DRIVEWAY, PZT_FENCE_EDGES, PZT_GATES, SHED_DRIVE, THUJA_HEDGE, type Gate } from './site/sitePlan';
 
-export type GardenKind = 'driveway' | 'path' | 'patio' | 'flowerbed' | 'gravel';
+/** painted areas; 'vegbed' is a raised vegetable bed (a timber frame filled with soil) */
+export type GardenKind = 'driveway' | 'path' | 'patio' | 'flowerbed' | 'gravel' | 'vegbed';
 export interface GardenArea { id: string; kind: GardenKind; points: P2[] }
-export type TreeKind = 'deciduous' | 'conifer' | 'shrub' | 'birch';
+/** trees, and the smaller plants and objects of a garden (all are points with a height) */
+export type TreeKind = 'deciduous' | 'conifer' | 'shrub' | 'birch' | 'thuja' | 'grass' | 'lavender' | 'hydrangea' | 'boxwood' | 'globe' | 'maple' | 'rock' | 'firepit';
 export interface Tree { id: string; kind: TreeKind; x: number; z: number; height: number }
 /** a parked car: centre in site coords, rot = three.js rotation about Y (car front = local +x) */
 export interface Car { id: string; x: number; z: number; rot: number; color: string }
@@ -25,6 +28,13 @@ export type Tool =
   | 'conifer'
   | 'birch'
   | 'shrub'
+  | 'thuja'
+  | 'grass'
+  | 'lavender'
+  | 'hydrangea'
+  | 'boxwood'
+  | 'globe'
+  | 'maple'
   | 'fence'
   | 'buildingLine'
   | 'measure'
@@ -92,7 +102,11 @@ export interface AppState {
   fenceEdges: number[];
   fenceHeight: number;
   buildingLine: P2[] | null;
-  layers: { parcelLawn: boolean; neighbors: boolean; ao: boolean; interiorLights: boolean; ortho: boolean; dims: boolean; plan: boolean; roads?: boolean; buildings?: boolean; dimsMode?: DimsMode };
+  layers: {
+    parcelLawn: boolean; neighbors: boolean; ao: boolean; interiorLights: boolean; ortho: boolean; dims: boolean; plan: boolean; roads?: boolean; buildings?: boolean; dimsMode?: DimsMode;
+    /** look inside: hide the roof, or the upper storey together with the roof */
+    hideRoof?: boolean; hideUpper?: boolean;
+  };
   tool: Tool;
   selected: string | null;
 
@@ -146,6 +160,28 @@ export function migrateState(state: unknown, version: number) {
     const ps = out.projectState?.[PZT.projectId];
     if (ps && wasPzt(ps.placement)) out.projectState = { ...out.projectState, [PZT.projectId]: { ...ps, placement: { ...PZT.placement } } };
   }
+  if (version < 7) {
+    // the garden as planned in November 2026: thuja hedges instead of whatever was planted before,
+    // the shed with its drive where the family put it, and the compromise variant opens first
+    const near = (o: Outbuilding) => o.kind === DEFAULT_SHED.kind && Math.hypot(o.placement.x - DEFAULT_SHED.placement.x, o.placement.z - DEFAULT_SHED.placement.z) < 0.5;
+    const had = out.outbuildings ?? [];
+    const outbuildings = had.length ? had.map((o) => (near(o) ? { ...o, floorLevel: DEFAULT_SHED.floorLevel } : o)) : [DEFAULT_SHED];
+    const garden = (out.garden ?? []).filter((g) => g.id !== SHED_DRIVE.id);
+    out = { ...out, trees: THUJA_HEDGE, outbuildings, garden: outbuildings.some(near) ? [...garden, SHED_DRIVE] : garden };
+    const id = DEFAULT_PROJECT;
+    if (out.projectId && out.projectId !== id && out.placement) {
+      const saved = { ...(out.projectState ?? {}), [out.projectId]: { placement: out.placement, floorLevel: out.floorLevel ?? null, annexes: out.annexes } };
+      const next = saved[id] ?? { placement: { ...PROJECT_START[id].placement }, floorLevel: PROJECT_START[id].floorLevel };
+      out = { ...out, projectId: id, projectState: saved, placement: next.placement, floorLevel: next.floorLevel, annexes: next.annexes ?? {}, target: 'main' };
+    }
+  }
+  if (version < 8) {
+    // the designed garden: beds, paths, the fire-pit circle, raised vegetable beds and their plants,
+    // added to whatever is there (same ids are not added twice)
+    const trees = out.trees ?? [], garden = out.garden ?? [];
+    const hasT = new Set(trees.map((t) => t.id)), hasG = new Set(garden.map((g) => g.id));
+    out = { ...out, trees: [...trees, ...GARDEN_PLANTS.filter((t) => !hasT.has(t.id))], garden: [...garden, ...GARDEN_AREAS.filter((g) => !hasG.has(g.id))] };
+  }
   return out;
 }
 
@@ -155,20 +191,21 @@ export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
       tab: 'preview',
-      // new visitors start on Dom w Arganiach where the PZT puts it (returning visitors keep their own)
-      projectId: PZT.projectId,
+      // new visitors start on the compromise variant of Dom w Arganiach (returning visitors keep their own positions)
+      projectId: DEFAULT_PROJECT,
       projectState: {},
-      placement: { ...PZT.placement },
+      placement: { ...PROJECT_START[DEFAULT_PROJECT].placement },
       placementInitialised: true,
-      floorLevel: PZT.floorLevel,
+      floorLevel: PROJECT_START[DEFAULT_PROJECT].floorLevel,
       annexes: {},
       target: 'main',
-      outbuildings: [],
+      outbuildings: [DEFAULT_SHED],
       sun: { month: 6, day: 21, minutes: 17 * 60 },
       palette: DEFAULT_PALETTE,
-      // the PZT layout: the drawn forecourt, gate and wicket in the north-east fence, fence all round, two cars at the garage
-      garden: [PZT_DRIVEWAY],
-      trees: [],
+      // the PZT layout: the drawn forecourt, gate and wicket in the north-east fence, fence all round, two cars at the garage;
+      // plus the garden: the shed's drive and thuja hedges along the road and both neighbours
+      garden: [PZT_DRIVEWAY, SHED_DRIVE, ...GARDEN_AREAS],
+      trees: [...THUJA_HEDGE, ...GARDEN_PLANTS],
       cars: PZT_CARS,
       gates: PZT_GATES,
       fenceEdges: PZT_FENCE_EDGES,
@@ -217,7 +254,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'house-placer-v1',
-      version: 6,
+      version: 8,
       migrate: (state, version) => migrateState(state, version) as AppState,
       partialize: (s) => ({
         tab: s.tab,
