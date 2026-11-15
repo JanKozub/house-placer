@@ -3,13 +3,13 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { P2, Placement } from './placement/geom2d';
 import { GARDEN_AREAS, GARDEN_PLANTS } from './site/gardenPlan';
-import { DEFAULT_PROJECT, DEFAULT_SHED, layoutCars, layoutGarden, layoutGates, PROJECT_START, PZT, PZT_CARS, PZT_DRIVEWAY, PZT_FENCE_EDGES, PZT_GATES, SHED_DRIVE, THUJA_HEDGE, type Gate } from './site/sitePlan';
+import { DEFAULT_PROJECT, DEFAULT_SHED, layoutCars, layoutGarden, layoutGates, layoutTrees, PROJECT_START, PZT, PZT_CARS, PZT_DRIVEWAY, PZT_FENCE_EDGES, PZT_GATES, SHED_DRIVE, THUJA_HEDGE, type Gate } from './site/sitePlan';
 
-/** painted areas; 'vegbed' is a raised vegetable bed (a timber frame filled with soil) */
-export type GardenKind = 'driveway' | 'path' | 'patio' | 'flowerbed' | 'gravel' | 'vegbed';
+/** painted areas; 'vegbed' is a raised vegetable bed (a timber frame filled with soil), 'wall' a low seat wall */
+export type GardenKind = 'driveway' | 'path' | 'patio' | 'flowerbed' | 'gravel' | 'vegbed' | 'wall';
 export interface GardenArea { id: string; kind: GardenKind; points: P2[] }
 /** trees, and the smaller plants and objects of a garden (all are points with a height) */
-export type TreeKind = 'deciduous' | 'conifer' | 'shrub' | 'birch' | 'thuja' | 'grass' | 'lavender' | 'hydrangea' | 'boxwood' | 'globe' | 'maple' | 'rock' | 'firepit';
+export type TreeKind = 'deciduous' | 'conifer' | 'shrub' | 'birch' | 'thuja' | 'grass' | 'lavender' | 'hydrangea' | 'boxwood' | 'globe' | 'maple' | 'rock' | 'firepit' | 'perennial' | 'fescue' | 'pot' | 'bollard';
 export interface Tree { id: string; kind: TreeKind; x: number; z: number; height: number }
 /** a parked car: centre in site coords, rot = three.js rotation about Y (car front = local +x) */
 export interface Car {
@@ -39,6 +39,10 @@ export type Tool =
   | 'boxwood'
   | 'globe'
   | 'maple'
+  | 'perennial'
+  | 'fescue'
+  | 'pot'
+  | 'bollard'
   | 'fence'
   | 'buildingLine'
   | 'measure'
@@ -186,6 +190,13 @@ export function migrateState(state: unknown, version: number) {
     const hasT = new Set(trees.map((t) => t.id)), hasG = new Set(garden.map((g) => g.id));
     out = { ...out, trees: [...trees, ...GARDEN_PLANTS.filter((t) => !hasT.has(t.id))], garden: [...garden, ...GARDEN_AREAS.filter((g) => !hasG.has(g.id))] };
   }
+  if (version < 12) {
+    // the designed garden was redrawn (a new entrance): what it planted and laid out before is
+    // replaced by the new plan; anything the visitor added themselves stays. (Versions 10 and 11
+    // existed only while this was being built, with earlier drafts of the entrance: replaced as well.)
+    const mine = <T extends { id: string }>(list: T[] | undefined) => (list ?? []).filter((x) => !x.id.startsWith('g-'));
+    out = { ...out, trees: [...mine(out.trees), ...GARDEN_PLANTS], garden: [...mine(out.garden), ...GARDEN_AREAS] };
+  }
   if (version < 9) {
     // two more cars, parked inside the garage (to see how they fit)
     const cars = out.cars ?? [], has = new Set(cars.map((c) => c.id));
@@ -263,7 +274,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'house-placer-v1',
-      version: 9,
+      version: 12,
       migrate: (state, version) => migrateState(state, version) as AppState,
       partialize: (s) => ({
         tab: s.tab,
@@ -295,6 +306,10 @@ export const useStore = create<AppState>()(
 export const useGarden = (): GardenArea[] => {
   const garden = useStore((s) => s.garden), id = useStore((s) => s.projectId);
   return useMemo(() => layoutGarden(id, garden), [id, garden]);
+};
+export const useTrees = (): Tree[] => {
+  const trees = useStore((s) => s.trees), id = useStore((s) => s.projectId);
+  return useMemo(() => layoutTrees(id, trees), [id, trees]);
 };
 export const useCars = (): Car[] => {
   const cars = useStore((s) => s.cars), id = useStore((s) => s.projectId);

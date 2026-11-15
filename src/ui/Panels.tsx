@@ -1,6 +1,6 @@
 import { useDeferredValue, useId, useRef, useState } from 'react';
 import { useDerived, useSite } from '../derived';
-import { DEFAULT_PALETTE, PERSIST_KEYS, useStore, type DimsMode, type Palette, type Tool } from '../store';
+import { DEFAULT_PALETTE, PERSIST_KEYS, useStore, type DimsMode, type Palette, type Tool, useTrees } from '../store';
 import { roofTopAt } from '../house/roof';
 import { HOUSES } from '../house/projects';
 import { setBuildingFloor, setBuildingPlacement, useTarget } from '../house/annex';
@@ -13,7 +13,7 @@ import { centroid, polygonArea, toSite } from '../placement/geom2d';
 import { f } from './format';
 import type { GardenKind } from '../store';
 
-const KIND_NAMES: Record<GardenKind, string> = { driveway: 'podjazd', path: 'ścieżka', patio: 'patio', flowerbed: 'rabata', gravel: 'żwir', vegbed: 'grządka podwyższona' };
+const KIND_NAMES: Record<GardenKind, string> = { driveway: 'podjazd', path: 'ścieżka', patio: 'patio', flowerbed: 'rabata', gravel: 'żwir', vegbed: 'grządka podwyższona', wall: 'murek' };
 
 const fmtTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(Math.round(m % 60)).padStart(2, '0')}`;
 const MONTHS = ['Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec', 'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień'];
@@ -165,7 +165,7 @@ export function PlacementPanel() {
   const layers = useStore((s) => s.layers);
   const setLayers = useStore((s) => s.setLayers);
   const garden = useStore((s) => s.garden);
-  const trees = useStore((s) => s.trees);
+  const trees = useTrees();
   const cars = useStore((s) => s.cars);
   const selected = useStore((s) => s.selected);
   const fenceHeight = useStore((s) => s.fenceHeight);
@@ -183,7 +183,7 @@ export function PlacementPanel() {
   ];
   const tools: [Tool, string][] = [
     ['select', 'Przesuń dom'], ['driveway', 'Podjazd'], ['path', 'Ścieżka'], ['patio', 'Patio'], ['flowerbed', 'Rabata'], ['gravel', 'Żwir'],
-    ['deciduous', 'Drzewo'], ['birch', 'Brzoza'], ['conifer', 'Iglak'], ['thuja', 'Tuja'], ['shrub', 'Krzew'], ['globe', 'Drzewko kuliste'], ['maple', 'Klon czerwony'], ['hydrangea', 'Hortensja'], ['grass', 'Trawa ozdobna'], ['lavender', 'Lawenda'], ['boxwood', 'Bukszpan'], ['fence', 'Ogrodzenie'], ['buildingLine', 'Linia zabudowy'], ['measure', 'Pomiar'], ['car', 'Samochód'],
+    ['deciduous', 'Drzewo'], ['birch', 'Brzoza'], ['conifer', 'Iglak'], ['thuja', 'Tuja'], ['shrub', 'Krzew'], ['globe', 'Drzewko kuliste'], ['maple', 'Klon czerwony'], ['hydrangea', 'Hortensja'], ['grass', 'Trawa ozdobna'], ['lavender', 'Lawenda'], ['perennial', 'Bylina'], ['fescue', 'Kostrzewa'], ['boxwood', 'Bukszpan'], ['pot', 'Donica'], ['bollard', 'Lampa'], ['fence', 'Ogrodzenie'], ['buildingLine', 'Linia zabudowy'], ['measure', 'Pomiar'], ['car', 'Samochód'],
   ];
 
   const center = () => {

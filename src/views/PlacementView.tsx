@@ -5,7 +5,7 @@ import { Line, MapControls, OrthographicCamera } from '@react-three/drei';
 import { LabelContext, LabelOverlay, LabelProjector, LabelRegistry, WorldLabel } from './labels';
 import { create } from 'zustand';
 import { useDerived, useSite } from '../derived';
-import { uid, useCars, useGarden, useStore, type GardenKind, type Tool, type TreeKind } from '../store';
+import { uid, useCars, useGarden, useStore, useTrees, type GardenKind, type Tool, type TreeKind } from '../store';
 import { houseById, useHouse } from '../house/projects';
 import { buildingDef, buildingPlacement, setBuildingPlacement, useTarget } from '../house/annex';
 import type { HouseDef } from '../house/types';
@@ -15,14 +15,14 @@ import { f } from '../ui/format';
 import { Attribution } from '../ui/Attribution';
 import { cornerLabel } from '../placement/setbacks';
 import { CAR_SIZE } from '../site/Cars';
-import { layoutCars, layoutGarden, PZT_CARS } from '../site/sitePlan';
+import { layoutCars, layoutGarden, layoutTrees, PZT_CARS } from '../site/sitePlan';
 
 const OVER = 200; // overlay height (scene units) — drawn without depth test
 const FIXED_SUN = new THREE.Vector3(-0.35, 0.85, 0.4).normalize();
 
 const AREA_TOOLS: GardenKind[] = ['driveway', 'path', 'patio', 'flowerbed', 'gravel'];
-const TREE_TOOLS: TreeKind[] = ['deciduous', 'conifer', 'birch', 'shrub', 'thuja', 'grass', 'lavender', 'hydrangea', 'boxwood', 'globe', 'maple'];
-const TREE_H: Record<TreeKind, number> = { deciduous: 7, conifer: 5, birch: 9, shrub: 1.3, thuja: 2.2, grass: 1.2, lavender: 0.45, hydrangea: 1.1, boxwood: 0.7, globe: 3.4, maple: 2.6, rock: 0.5, firepit: 0.35 };
+const TREE_TOOLS: TreeKind[] = ['deciduous', 'conifer', 'birch', 'shrub', 'thuja', 'grass', 'lavender', 'hydrangea', 'boxwood', 'globe', 'maple', 'perennial', 'fescue', 'pot', 'bollard'];
+const TREE_H: Record<TreeKind, number> = { deciduous: 7, conifer: 5, birch: 9, shrub: 1.3, thuja: 2.2, grass: 1.2, lavender: 0.45, hydrangea: 1.1, boxwood: 0.7, globe: 3.4, maple: 2.6, rock: 0.5, firepit: 0.35, perennial: 0.55, fescue: 0.35, pot: 1.0, bollard: 0.6 };
 
 const v3 = (p: P2, y = OVER): [number, number, number] => [p[0], y, p[1]];
 const ring = (pts: P2[], y = OVER) => [...pts, pts[0]].map((p) => v3(p, y));
@@ -301,7 +301,7 @@ function SiteOverlay() {
 
 function GardenOverlay({ draft, cursor }: { draft: P2[]; cursor: P2 | null }) {
   const garden = useGarden();
-  const trees = useStore((s) => s.trees);
+  const trees = useTrees();
   const cars = useCars();
   const selected = useStore((s) => s.selected);
   const bl = useStore((s) => s.buildingLine);
@@ -430,7 +430,7 @@ function Interaction({ draft, setDraft, setCursor }: { draft: P2[]; setDraft: (d
       st.setState({ selected: null, target: hit.id });
     } else {
       // select garden item
-      const tree = s.trees.find((t) => Math.hypot(t.x - p[0], t.z - p[1]) < Math.max(0.8, t.height * 0.3));
+      const tree = layoutTrees(s.projectId, s.trees).find((t) => Math.hypot(t.x - p[0], t.z - p[1]) < Math.max(0.8, t.height * 0.3));
       // a car: inside its footprint (front = local +x)
       const car = layoutCars(s.projectId, s.cars).find((c) => {
         const dx = p[0] - c.x, dz = p[1] - c.z, co = Math.cos(c.rot), si = Math.sin(c.rot);

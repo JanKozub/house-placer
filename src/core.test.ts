@@ -10,12 +10,12 @@ import { buildingDef, defaultAnnexPlacement } from './house/annex';
 import { carvedHeight } from './site/Terrain';
 import { CAR_SIZE, CAR_STYLES } from './site/Cars';
 import { argania2 } from './house/argania2';
-import { accessRoads, DEFAULT_PROJECT, DEFAULT_SHED, GARAGE_CARS, GROUND_DESIGN, HEDGE, HEDGE_EDGES, isPztPlacement, layoutCars, layoutGarden, layoutGates, LOW_FLOOR_LEVEL, MID_FLOOR_LEVEL, MID_PLACEMENT, MID_SHIFT, PLOT, PROJECT_LAYOUT, PROJECT_START, PZT, PZT_CARS, PZT_DRIVEWAY, PZT_GATES, SHED_DRIVE, SHED_FLOOR_LEVEL, THUJA_HEDGE } from './site/sitePlan';
+import { accessRoads, DEFAULT_PROJECT, DEFAULT_SHED, FRONT, GARAGE_CARS, GROUND_DESIGN, layoutTrees, MID_DRIVE, midDriveLeft, midFenceLine, HEDGE, HEDGE_EDGES, isPztPlacement, layoutCars, layoutGarden, layoutGates, LOW_FLOOR_LEVEL, MID_FLOOR_LEVEL, MID_PLACEMENT, MID_SHIFT, PLOT, PROJECT_LAYOUT, PROJECT_START, PZT, PZT_CARS, PZT_DRIVEWAY, PZT_GATES, SHED_DRIVE, SHED_FLOOR_LEVEL, THUJA_HEDGE } from './site/sitePlan';
 import { argania2Low, argania2Mid, DRIVE_FALL, GARAGE_DROP, MID_DRIVE_FALL, MID_FLAT, MID_GARAGE_DROP, MID_RISERS, RISERS } from './house/argania2-low';
 import { lowerGroundPlatform, platformPolygon } from './derived';
 import { fenceOpenings, isBigTree, plantGeometry } from './site/Garden';
-import { buildFeatures, KERB, kerbPieces, RAISED_BED } from './site/GardenFeatures';
-import { FIRE_PIT, GARDEN_AREAS, GARDEN_PLANTS } from './site/gardenPlan';
+import { buildFeatures, KERB, kerbPieces, RAISED_BED, SEAT_WALL } from './site/GardenFeatures';
+import { FIRE_PIT, GARDEN_AREAS, GARDEN_PLANTS, WALK } from './site/gardenPlan';
 import { toLocal } from './house/geometry';
 import { DEFAULT_HOUSE_ID } from './house/projects';
 import { APRON_FALL, APRON_FLAT, APRON_LENGTH, OUTBUILDINGS, wiataGaraz } from './house/outbuildings';
@@ -833,7 +833,7 @@ describe('site data (public/site)', () => {
     it('every plant stands on the plot, clear of the buildings, the paving and the hedge', () => {
       expect(GARDEN_PLANTS.length).toBeGreaterThan(140);
       expect(new Set(GARDEN_PLANTS.map((t) => t.id)).size).toBe(GARDEN_PLANTS.length);
-      const hard = [house, shed, lay.driveway.points, SHED_DRIVE.points, ...GARDEN_AREAS.filter((g) => g.kind === 'path' || g.kind === 'patio' || g.kind === 'vegbed').map((g) => g.points)];
+      const hard = [house, shed, lay.driveway.points, SHED_DRIVE.points, ...GARDEN_AREAS.filter((g) => ['path', 'patio', 'vegbed', 'wall'].includes(g.kind)).map((g) => g.points)];
       GARDEN_PLANTS.forEach((t, i) => {
         const p: P2 = [t.x, t.z];
         expect(pointInPolygon(p, base.parcel)).toBe(true);
@@ -866,8 +866,9 @@ describe('site data (public/site)', () => {
       // between the fence and the shed's drive, and along its garden side
       for (const p of byId('g-bed-fence').points) { expect(off(p, 0)).toBeGreaterThan(0.3); expect(off(p, 0)).toBeLessThan(1.46); }
       for (const p of byId('g-bed-avenue').points) expect(off(p, 0)).toBeGreaterThan(4.94);
-      // the strip between the forecourt and the north-west hedge is planted
-      for (const p of byId('g-bed-forecourt').points) { expect(pointInPolygon(p, lay.driveway.points)).toBe(false); expect(off(p, 1)).toBeGreaterThan(1.1); }
+      // where the PZT had paving up to the north-west neighbour, there is a pebble garden beside the drive
+      for (const p of byId('g-front-garden').points) { expect(pointInPolygon(p, lay.driveway.points)).toBe(false); expect(off(p, 1)).toBeGreaterThan(1.1); }
+      expect(polygonArea(byId('g-front-garden').points)).toBeGreaterThan(40);
       // four raised beds of 1.2 × 3.3 m on a gravel pad
       const veg = GARDEN_AREAS.filter((g) => g.kind === 'vegbed');
       expect(veg).toHaveLength(4);
@@ -882,6 +883,91 @@ describe('site data (public/site)', () => {
       expect(FIRE_PIT).toHaveLength(2);
       for (const id of ['g-path-terrace', 'g-path-wiata']) expect(polygonGap(byId(id).points, circle.points).d).toBeLessThan(0.3);
       expect(polygonGap(byId('g-path-wiata').points, byId('g-patio-wiata').points).d).toBeLessThan(0.3);
+    });
+
+    it('the entrance: a path from the wicket beside the gate to a court at the front steps, a seat wall towards the drive', () => {
+      const plan = (p: P2) => { const l = toHouse(p, MID_PLACEMENT); return [l[0] + argania2Mid.width / 2, l[1] + argania2Mid.depth / 2]; };
+      const walk = byId('g-front-walk'), walkGate = byId('g-front-walk-gate'), court = byId('g-front-court'), wall = byId('g-front-seat-wall'), pebbles = byId('g-front-walk-pebbles');
+      expect([walk.kind, walkGate.kind]).toEqual(['path', 'path']);
+      const wp = walk.points.map(plan), gp = walkGate.points.map(plan);
+      // 1.4 m wide; at the house it is centred on the steps (plan X 4.9–7.4)
+      expect(wp[1][0] - wp[0][0]).toBeCloseTo(1.4, 2);
+      expect(gp[2][0] - gp[3][0]).toBeCloseTo(1.4, 2);
+      expect((wp[0][0] + wp[1][0]) / 2).toBeCloseTo((4.9 + 7.4) / 2, 2);
+      expect(WALK.y0).toBe(14.3);
+      // it joins the court, which lies at the foot of the steps (plan Y 13.0) as wide as the steps and on to the drive
+      expect(polygonGap(court.points, walk.points).d).toBeLessThan(0.03);
+      const cp = court.points.map(plan);
+      expect(Math.min(...cp.map((p) => p[1]))).toBeCloseTo(13.0, 1);
+      expect(Math.min(...cp.map((p) => p[0]))).toBeCloseTo(4.9, 1);
+      expect(Math.max(...cp.map((p) => p[0]))).toBeCloseTo(midDriveLeft(WALK.y0), 1);
+      // and it ends at the wicket, which stands right beside the sliding gate
+      const a = base.parcel[0], b = base.parcel[1], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const wicket = lay.gates.find((g) => g.kind === 'wicket')!, gate = lay.gates.find((g) => g.kind === 'sliding')!;
+      expect(gate.from - wicket.to).toBeCloseTo(0.25, 6);
+      for (const sEnd of [wicket.from, wicket.to]) {
+        const q = plan([a[0] + ((b[0] - a[0]) / L) * sEnd, a[1] + ((b[1] - a[1]) / L) * sEnd]);
+        expect(q[0]).toBeGreaterThan(gp[3][0] - 0.05);
+        expect(q[0]).toBeLessThan(gp[2][0] + 0.05);
+      }
+      expect(off(walkGate.points[2], 0)).toBeCloseTo(0.3, 1);
+      expect(off(walkGate.points[3], 0)).toBeCloseTo(0.3, 1);
+      // the fence opens only at the two gates
+      const open = fenceOpenings(base.parcel, 0, [lay.driveway.points, walk.points, walkGate.points, court.points, byId('g-front-path-kitchen').points], lay.gates);
+      expect(open.map(([, , k]) => k)).toEqual(['wicket', 'sliding']);
+      expect(midFenceLine(7.4)).toBe(22.34);
+      // it is laid in two pieces that stop at the drive to the shed: the cobbles run through, the path does not cross them
+      for (const piece of [walk, walkGate]) {
+        expect(polygonGap(piece.points, SHED_DRIVE.points).d).toBe(0); // they meet
+        // …with no more than a 2 cm overlap: the piece's edge lies on the drive's edge
+        for (const p of piece.points) if (pointInPolygon(p, SHED_DRIVE.points)) expect(Math.min(Math.abs(off(p, 0) - 1.45), Math.abs(off(p, 0) - 4.95))).toBeLessThan(0.03);
+      }
+      // the two pieces are in line, 3.5 m apart (the width of that drive)
+      expect(polygonGap(walk.points, walkGate.points).d).toBeCloseTo(3.5 - 0.04, 1);
+      expect(off(walk.points[2], 0)).toBeCloseTo(4.93, 1);
+      expect(off(walkGate.points[0], 0)).toBeCloseTo(1.47, 1);
+      // neither piece lies on the drive to the garage
+      for (const p of [...walk.points, ...walkGate.points]) expect(pointInPolygon(p, lay.driveway.points)).toBe(false);
+      // pebbles edge it on both sides
+      for (const p of walk.points.slice(0, 2)) expect(pointInPolygon([p[0], p[1] - 0.05] as P2, pebbles.points) || polygonGap([p, [p[0] + 0.01, p[1]], [p[0], p[1] + 0.01]], pebbles.points).d < 0.1).toBe(true);
+      expect(polygonArea(pebbles.points)).toBeGreaterThan((polygonArea(walk.points) + polygonArea(walkGate.points)) * 1.3);
+      // the seat wall stands on the edge of the drive, between it and the path
+      const wl = wall.points.map(plan);
+      for (const q of wl) { expect(q[0]).toBeLessThanOrEqual(midDriveLeft(q[1])); expect(q[0]).toBeGreaterThan(wp[1][0]); }
+      expect(Math.max(...wl.map((p) => p[1])) - Math.min(...wl.map((p) => p[1]))).toBeGreaterThan(2.5);
+      // planters flank the steps, lanterns stand on both sides of the path
+      const front = GARDEN_PLANTS.filter((t) => t.id.startsWith(FRONT));
+      const pots = front.filter((t) => t.kind === 'pot').map((t) => plan([t.x, t.z]));
+      expect(pots).toHaveLength(2);
+      expect(pots[0][0]).toBeLessThan(4.9);
+      expect(pots[1][0]).toBeGreaterThan(7.4);
+      for (const p of pots) expect(Math.abs(p[1] - 12.75)).toBeLessThan(0.1);
+      const lamps = front.filter((t) => t.kind === 'bollard');
+      expect(lamps).toHaveLength(5);
+      for (const t of lamps) {
+        const dot: P2[] = [[t.x, t.z], [t.x + 0.01, t.z], [t.x, t.z + 0.01]];
+        expect(pointInPolygon([t.x, t.z], walk.points) || pointInPolygon([t.x, t.z], walkGate.points)).toBe(false);
+        expect(Math.min(polygonGap(walk.points, dot).d, polygonGap(walkGate.points, dot).d)).toBeLessThan(0.6);
+      }
+      // much more is planted here than before
+      expect(front.length).toBeGreaterThan(65);
+      for (const k of ['grass', 'fescue', 'perennial', 'hydrangea', 'boxwood', 'lavender']) expect(front.some((t) => t.kind === k)).toBe(true);
+    });
+
+    it('the entrance belongs to the compromise variant: with another house it is left out', () => {
+      const garden = [PZT_DRIVEWAY, SHED_DRIVE, ...GARDEN_AREAS], trees = [...THUJA_HEDGE, ...GARDEN_PLANTS];
+      const nFrontAreas = GARDEN_AREAS.filter((g) => g.id.startsWith(FRONT)).length, nFrontPlants = GARDEN_PLANTS.filter((t) => t.id.startsWith(FRONT)).length;
+      expect(nFrontAreas).toBeGreaterThan(8);
+      expect(layoutTrees('argania2-mid', trees)).toBe(trees);
+      expect(layoutGarden('argania2-mid', garden)).toHaveLength(garden.length);
+      for (const id of ['argania2', 'argania2-low', 'ambrozja17']) {
+        expect(layoutTrees(id, trees)).toHaveLength(trees.length - nFrontPlants);
+        expect(layoutGarden(id, garden)).toHaveLength(garden.length - nFrontAreas);
+        expect(layoutGarden(id, garden).some((g) => g.id.startsWith(FRONT))).toBe(false);
+        // on the PZT's forecourt nothing of the garden stands in the way
+        if (id !== 'ambrozja17') for (const t of layoutTrees(id, trees)) if (t.id.startsWith('g-')) expect(pointInPolygon([t.x, t.z], PZT_DRIVEWAY.points)).toBe(false);
+      }
+      expect(layoutTrees('argania2', THUJA_HEDGE)).toBe(THUJA_HEDGE); // nothing to leave out: the same list
     });
 
     it('kerbs: along every free edge of the paving; none across it, at the walls or in the gateways', () => {
@@ -907,7 +993,7 @@ describe('site data (public/site)', () => {
       const onDrive = pieces.filter(([a]) => SHED_DRIVE.points.some((p, i) => { const q = SHED_DRIVE.points[(i + 1) % 4]; const c = closestOnSegment(a, p, q); return Math.hypot(a[0] - c[0], a[1] - c[1]) < 0.01; }));
       const len = onDrive.reduce((s2, [a, b]) => s2 + Math.hypot(b[0] - a[0], b[1] - a[1]), 0);
       expect(len).toBeGreaterThan(30);
-      expect(len).toBeLessThan(2 * 24.9 - 8); // well short of its full outline
+      expect(len).toBeLessThan(2 * 24.9 - 3); // short of its full outline: none over the forecourt's drive
       // without the other areas the forecourt's own outline is kerbed all round except the house and the gates
       expect(kerbPieces([lay.driveway], [house], base.parcel, []).length).toBeGreaterThan(kerbPieces([lay.driveway], [house], base.parcel, lay.gates).length);
     });
@@ -923,10 +1009,14 @@ describe('site data (public/site)', () => {
       onlyKerbs.computeBoundingBox();
       expect(onlyKerbs.boundingBox!.max.y).toBeCloseTo(10 + KERB.above, 6);
       expect(buildFeatures([byId('g-bed-fence')], [], base.parcel, [], flat)).toBeNull(); // beds are paint only
+      // the seat wall is 45 cm high with a 4 cm timber seat
+      const wallGeo = buildFeatures([byId('g-front-seat-wall')], [], base.parcel, [], flat)!;
+      wallGeo.computeBoundingBox();
+      expect(wallGeo.boundingBox!.max.y).toBeCloseTo(10 + SEAT_WALL.height + 0.04, 6);
     });
 
     it('every small plant has its own coloured shape, standing on the ground and about as tall as planted', () => {
-      const kinds = ['thuja', 'grass', 'lavender', 'hydrangea', 'boxwood', 'globe', 'maple', 'rock', 'firepit'] as const;
+      const kinds = ['thuja', 'grass', 'lavender', 'hydrangea', 'boxwood', 'globe', 'maple', 'rock', 'firepit', 'perennial', 'fescue', 'pot', 'bollard'] as const;
       for (const kind of kinds) {
         const t = { id: `x-${kind}`, kind, x: 0, z: 0, height: kind === 'firepit' ? 0.35 : 1.2 };
         expect(isBigTree(kind)).toBe(false);
@@ -1307,14 +1397,23 @@ describe('site data (public/site)', () => {
     it('its own forecourt, gate and cars replace the PZT ones while it is shown; the other projects keep the PZT layout', () => {
       const a = base.parcel[0], b = base.parcel[1], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
       const d = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
-      // the same drawn yard, moved with the house: its far corners 0.3 m inside the north-east boundary, 2.8 m from the north-west one
-      expect(lay.driveway.points).toHaveLength(PZT_DRIVEWAY.points.length);
-      expect(off(lay.driveway.points[5], 0)).toBeCloseTo(0.3, 1);
-      expect(off(lay.driveway.points[6], 0)).toBeCloseTo(0.3, 1);
-      expect(off(lay.driveway.points[7], 1)).toBeCloseTo(0.3 + MID_SHIFT, 1);
+      // the drive: only as wide as the garage door needs (7 m), from the garage front to 0.3 m inside the north-east boundary
+      expect(lay.driveway.points).toHaveLength(4);
+      const drivePlan = lay.driveway.points.map((p) => { const l = toHouse(p, pl); return [l[0] + argania2Mid.width / 2, l[1] + argania2Mid.depth / 2]; });
+      expect(drivePlan[0][1]).toBeCloseTo(argania2Mid.depth, 1);
+      expect(drivePlan[1][0] - drivePlan[0][0]).toBeCloseTo(7.0, 1);
+      expect([drivePlan[0][0], drivePlan[1][0], drivePlan[3][0]].map((v) => Math.round(v * 100) / 100)).toEqual([MID_DRIVE.left, MID_DRIVE.right, MID_DRIVE.leftAtFence]);
+      expect(midDriveLeft(12.4)).toBe(MID_DRIVE.left);
+      expect(off(lay.driveway.points[2], 0)).toBeCloseTo(0.3, 1);
+      expect(off(lay.driveway.points[3], 0)).toBeCloseTo(0.3, 1);
+      expect(off(lay.driveway.points[2], 1)).toBeGreaterThan(5); // the rest, up to the north-west neighbour, is garden
       expect(lay.driveway.points.every((p) => pointInPolygon(p, base.parcel))).toBe(true);
-      // the lowered forecourt lies on that yard
-      for (const q of lower.polygon.slice(-5)) expect(lay.driveway.points.some((p) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 0.02)).toBe(true);
+      expect(polygonArea(lay.driveway.points)).toBeLessThan(polygonArea(PZT_DRIVEWAY.points) * 0.6);
+      // it covers the garage door with room on both sides, and lies on the lowered forecourt
+      const door = argania2Mid.openings.find((o) => o.kind === 'garage')!;
+      expect(MID_DRIVE.left).toBeLessThan(door.at - door.width / 2 - 0.1);
+      expect(MID_DRIVE.right).toBeGreaterThan(door.at + door.width / 2 + 1.5);
+      for (const [X, Y] of [[8.5, 13], [14.9, 13], [14.9, 21], [8.8, 21.5]]) expect(pointInPolygon(at(X, Y), lower.polygon)).toBe(true);
       // the fence opens only at the gates; the sliding gate is centred on the garage door
       const open = fenceOpenings(base.parcel, 0, [lay.driveway.points], lay.gates);
       expect(open.map(([o, c, k]) => [Math.round((c - o) * 100) / 100, k])).toEqual([[1, 'wicket'], [4.5, 'sliding']]);
@@ -1543,7 +1642,7 @@ describe('project switching', () => {
     expect(elsewhere.outbuildings[0]).toMatchObject({ id: 'ob-y', floorLevel: null });
     expect(elsewhere.garden.some((g) => g.id === 'shed-drive')).toBe(false);
     // already on the current version: untouched
-    expect(migrateState(v6, 9)).toBe(v6);
+    expect(migrateState(v6, 12)).toBe(v6);
   });
 
   it('migrates v8 storage: two cars are parked in the garage, once', () => {
@@ -1552,6 +1651,28 @@ describe('project switching', () => {
     expect(out.cars.map((c) => c.id)).toEqual(['pzt-car-1', 'c9', 'garage-car-1', 'garage-car-2']);
     const again = migrateState({ projectId: 'argania2-mid', cars: out.cars }, 8) as ReturnType<typeof useStore.getState>;
     expect(again.cars).toHaveLength(4);
+  });
+
+  it('migrates v9 storage: the redrawn garden replaces the earlier design, the visitor\'s own planting stays', () => {
+    const own = { id: 'mine', kind: 'birch', x: 0, z: 0, height: 8 }, bed = { id: 'my-bed', kind: 'flowerbed', points: [] };
+    const v9 = {
+      projectId: 'argania2-mid', placement: MID_PLACEMENT,
+      trees: [...THUJA_HEDGE, own, { id: 'g-grass-3', kind: 'grass', x: 99, z: 99, height: 1 }, { id: 'g-boxwood-40', kind: 'boxwood', x: 98, z: 98, height: 1 }],
+      garden: [PZT_DRIVEWAY, SHED_DRIVE, bed, { id: 'g-bed-forecourt', kind: 'gravel', points: [] }, { id: 'g-bed-entrance', kind: 'flowerbed', points: [] }],
+    };
+    const out = migrateState(v9, 9) as ReturnType<typeof useStore.getState>;
+    expect(out.trees.map((t) => t.id)).toEqual([...THUJA_HEDGE.map((t) => t.id), 'mine', ...GARDEN_PLANTS.map((t) => t.id)]);
+    expect(out.trees.some((t) => t.x > 90)).toBe(false); // the old design's plants are gone
+    expect(out.garden.map((g) => g.id)).toEqual(['pzt-driveway', 'shed-drive', 'my-bed', ...G_IDS]);
+    expect(out.garden.find((g) => g.id === 'g-front-bed-entrance')!.points.length).toBeGreaterThan(4);
+    expect(out.garden.some((g) => g.id === 'g-bed-forecourt')).toBe(false);
+    // data saved by the unfinished version 10 (stepping slabs, no path) is replaced the same way
+    const v10 = { ...v9, garden: [...v9.garden, { id: 'g-front-slab-1', kind: 'slab', points: [] }, { id: 'g-front-walk', kind: 'gravel', points: [] }] };
+    const fixed = migrateState(v10, 10) as ReturnType<typeof useStore.getState>;
+    expect(fixed.garden.map((g) => g.id)).toEqual(['pzt-driveway', 'shed-drive', 'my-bed', ...G_IDS]);
+    expect((migrateState(v10, 11) as ReturnType<typeof useStore.getState>).garden.map((g) => g.id)).toEqual(['pzt-driveway', 'shed-drive', 'my-bed', ...G_IDS]);
+    expect(fixed.garden.find((g) => g.id === 'g-front-walk')!.kind).toBe('path');
+    expect(fixed.garden.some((g) => (g.kind as string) === 'slab')).toBe(false);
   });
 
   it('migrates v7 storage: the designed garden is added to what is there, nothing twice', () => {

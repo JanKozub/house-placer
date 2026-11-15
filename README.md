@@ -135,7 +135,7 @@ When stored data from an older version is opened, the hedges replace the trees p
 
 On top of that comes a full planting plan (`src/site/gardenPlan.ts`), written in the house's plan coordinates as the compromise variant stands. It follows the motifs modern Polish garden visualisations keep returning to:
 
-- every edge of the paving is planted: grasses and lavender between the fence and the drive to the shed, an avenue of four ball-headed trees over lavender on its garden side, box balls, grasses and a red maple along the lane to the entrance, and a gravel bed with hydrangeas between the forecourt and the north-west hedge
+- the drive to the shed is planted on both sides: grasses and lavender between it and the fence, an avenue of four ball-headed trees over lavender on its garden side
 - white hydrangeas with ornamental grasses in front of the thuja hedge along the road and along the north-west neighbour
 - beds at both ends of the terrace, and a rock garden with boulders on the bank behind it
 - a group of birches in the west corner and a second red maple by the terrace
@@ -145,7 +145,19 @@ New plant kinds, all with their own planting tool: `grass`, `lavender`, `hydrang
 
 Paving now ends in a kerb (`src/site/GardenFeatures.tsx`): a 10 cm kerb, 4.5 cm proud, along every edge that has paving on one side only. There is none where a drive runs into the forecourt, at a wall or in a gateway, and the painted edge follows the same rule, so no line crosses the paving where two areas meet. Beds get a thin dark edging.
 
-The garden is laid out for the compromise variant; with another house project the beds near the house stay where they are.
+### The entrance
+
+The entrance is redrawn around the compromise variant, after a set of front-garden references the family collected: paths edged with pebbles between ornamental grasses and lanterns, clipped box balls with blue fescue, lavender with white hydrangeas and pink coneflowers, a feature tree, planters at the door.
+
+- The cobbles are kept to a 7 m drive in front of the garage door (`PROJECT_LAYOUT` in `src/site/sitePlan.ts`). The PZT's yard was more than twice that area.
+- The wicket stands right beside the sliding gate. From it a path of light slabs, 1.4 m wide and edged with pebbles, runs straight to a small paved court at the foot of the front steps. It is laid in two pieces that stop at the drive to the shed, so that drive's cobbles run through unbroken (the family's choice).
+- Lanterns and grasses stand on both sides of the path, planters flank the steps, and a 45 cm seat wall with a timber top (area kind `wall`) stands between the path and the drive.
+- Left of the path a bed runs up to the kitchen window: a feature tree over blue fescue, box balls, hydrangeas, coneflowers, boulders and the red maple. The path along the kitchen and the landing beside the porch are paved in the same slabs.
+- Right of the drive, where the PZT had paving up to the neighbour's fence, is a pebble garden: a row of box balls along the paving, two pines, a tree, drifts of grass, fescue and coneflowers, and hydrangeas in front of the hedge.
+
+New kinds for this: `perennial` (pink coneflower), `fescue`, `pot` (planter with a box ball), `bollard` (lantern). Beds are now drawn as bark mulch and gravel as river pebbles.
+
+Everything of the entrance has an id starting with `g-front` and is shown with the compromise variant only (`layoutTrees` / `layoutGarden`): with another house project it is left out and that project's own forecourt stays clear. The rest of the garden is shared by all projects.
 
 ## Cars
 

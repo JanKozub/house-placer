@@ -84,6 +84,7 @@ function bar(a: P2, b: P2, w: number, side: number, ya: [number, number], yb: [n
 
 const VEG = ['#86b44e', '#3f6f3a', '#5d9a45', '#a8c257'];
 export const RAISED_BED = { height: 0.3, board: 0.05 };
+export const SEAT_WALL = { height: 0.45 };
 
 /** kerbs and raised beds as one geometry (site-local x/z, heights relative to the site's base) */
 export function buildFeatures(areas: GardenArea[], footprints: P2[][], parcel: P2[], gates: Gate[], ground: (x: number, z: number) => number): THREE.BufferGeometry | null {
@@ -125,6 +126,16 @@ export function buildFeatures(areas: GardenArea[], footprints: P2[][], parcel: P
         const size = 0.09 + ((r * 7 + k * 3) % 5) * 0.012 + (r % 4 === 1 ? 0.05 : 0);
         parts.push(coloured(new THREE.IcosahedronGeometry(size, 0).scale(1, r % 4 === 1 ? 1.6 : 0.8, 1).translate(x, top - 0.04 + size * 0.6, z), VEG[r % VEG.length]));
       }
+  }
+  // low seat walls: concrete, 45 cm high, with a timber seat on top; they follow the ground
+  for (const wall of areas.filter((g) => g.kind === 'wall' && g.points.length === 4)) {
+    const p = wall.points, mid = (a: P2, b: P2): P2 => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], len = (a: P2, b: P2) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+    // its axis runs between the middles of its two short sides
+    const along = len(p[0], p[1]) >= len(p[1], p[2]);
+    const a = along ? mid(p[3], p[0]) : mid(p[0], p[1]), b = along ? mid(p[1], p[2]) : mid(p[2], p[3]);
+    const w = along ? len(p[1], p[2]) : len(p[0], p[1]), ha = ground(a[0], a[1]), hb = ground(b[0], b[1]);
+    parts.push(coloured(bar(a, b, w, 0, [ha - 0.2, ha + SEAT_WALL.height], [hb - 0.2, hb + SEAT_WALL.height]), '#c9c6bf'));
+    parts.push(coloured(bar(a, b, w + 0.04, 0, [ha + SEAT_WALL.height, ha + SEAT_WALL.height + 0.04], [hb + SEAT_WALL.height, hb + SEAT_WALL.height + 0.04]), '#a9824f'));
   }
   if (!parts.length) return null;
   const g = mergeGeometries(parts);

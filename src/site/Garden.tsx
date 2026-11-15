@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Site } from '../geo/site';
-import { useGarden, useGates, useStore, type Tree, type TreeKind } from '../store';
+import { useGarden, useGates, useStore, useTrees, type Tree, type TreeKind } from '../store';
 import { pointInPolygon, type P2 } from '../placement/geom2d';
 import { carvedHeight, type PlatformSpec } from './Terrain';
 import type { Gate } from './sitePlan';
@@ -146,6 +146,39 @@ export function plantGeometry(t: Tree): THREE.BufferGeometry {
     case 'lavender':
       parts.push(tint(jitter(ball(H * 0.75, 0, H * 0.45, 0, 0.7), 0.2), '#58764a', '#7a5fb0', shade));
       break;
+    case 'fescue': {
+      // a low blue-grey tuft (kostrzewa sina)
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 + r() * 0.6, lean = 0.25 + r() * 0.45, h = H * (0.8 + r() * 0.35);
+        parts.push(tint(new THREE.ConeGeometry(H * 0.09, h, 4).translate(0, h / 2, 0).rotateZ(lean).rotateY(a), '#7f989c', '#c3d0cf', shade));
+      }
+      break;
+    }
+    case 'perennial': {
+      // a mound of leaves with pink daisy heads over it (jeżówka)
+      parts.push(tint(jitter(ball(H * 0.55, 0, H * 0.4, 0, 0.75), 0.2), '#466f39', '#5a8744', shade));
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + r(), d = i < 2 ? H * 0.1 : H * 0.42;
+        parts.push(tint(ball(H * 0.13, Math.cos(a) * d, H * (i < 2 ? 0.98 : 0.78), Math.sin(a) * d, 0.55), '#c96a9c', '#e79bbd'));
+      }
+      break;
+    }
+    case 'pot': {
+      // a tall dark planter with a clipped ball in it
+      const w = Math.min(0.55, H * 0.55), ph = H * 0.52;
+      parts.push(tint(new THREE.BoxGeometry(w, ph, w).translate(0, ph / 2, 0), '#33363a', '#3f4347'));
+      parts.push(tint(new THREE.BoxGeometry(w * 0.86, 0.02, w * 0.86).translate(0, ph + 0.005, 0), '#2a2018'));
+      parts.push(tint(ball(H * 0.3, 0, ph + H * 0.24, 0, 1, 2), '#2f5a2c', '#3f7437', shade));
+      break;
+    }
+    case 'bollard': {
+      // a lantern on a short post: dark frame, warm light
+      parts.push(tint(new THREE.BoxGeometry(0.07, H * 0.62, 0.07).translate(0, H * 0.31, 0), '#25282b'));
+      parts.push(tint(new THREE.BoxGeometry(0.15, H * 0.3, 0.15).translate(0, H * 0.77, 0), '#ffd27a', '#fff0c4'));
+      parts.push(tint(new THREE.BoxGeometry(0.19, H * 0.06, 0.19).translate(0, H * 0.95, 0), '#25282b'));
+      parts.push(tint(new THREE.BoxGeometry(0.17, H * 0.03, 0.17).translate(0, H * 0.615, 0), '#25282b'));
+      break;
+    }
     case 'boxwood':
       parts.push(tint(ball(H * 0.5, 0, H * 0.5, 0, 1, 2), '#2f5a2c', '#3b6d35', shade));
       break;
@@ -189,7 +222,7 @@ export function plantGeometry(t: Tree): THREE.BufferGeometry {
 }
 
 export function Trees({ site, platform }: { site: Site; platform: PlatformSpec | PlatformSpec[] | null }) {
-  const all = useStore((s) => s.trees);
+  const all = useTrees();
   const trees = useMemo(() => all.filter((t) => isBigTree(t.kind)), [all]);
   const geoms = useMemo(() => new Map(trees.map((t) => [t.id + t.kind + t.height, treeGeometry(t)])), [trees]);
   // hedges, perennials and garden objects are many and small: one merged mesh for all of them,

@@ -65,6 +65,7 @@ const PATTERN_COLORS: Record<PatternKind, { base: string; joint?: string; module
   flowerbed: { base: '#4d3a2a', noise: 0.35 },
   gravel: { base: '#b9b2a6', noise: 0.45 },
   vegbed: { base: '#3b2b1e', noise: 0.3 },
+  wall: { base: '#c9c6bf', noise: 0.05 },
   apron: { base: '#a9a49b', noise: 0.45 },
   asphalt: { base: '#5a5c5f', noise: 0.16 },
   dirtRoad: { base: '#a2967f', noise: 0.4 },
@@ -90,12 +91,25 @@ function pattern(ctx: CanvasRenderingContext2D, kind: PatternKind, pxPerM: numbe
   }
   g.putImageData(img, 0, 0);
   if (kind === 'flowerbed') {
-    const cols = ['#c46aa8', '#e9d36b', '#7aa6d9', '#5f8f3a', '#4e7a32', '#f0f0f0'];
-    for (let i = 0; i < 160; i++) {
+    // bark mulch: chips in a few browns (the plants themselves stand on it)
+    const cols = ['#5d4634', '#43311f', '#6b5340', '#372818'];
+    for (let i = 0; i < 420; i++) {
       g.fillStyle = cols[Math.floor(r() * cols.length)];
-      const rad = (0.05 + r() * 0.12) * pxPerM;
+      const w = (0.02 + r() * 0.05) * pxPerM, h = (0.01 + r() * 0.025) * pxPerM;
+      g.save();
+      g.translate(r() * s, r() * s);
+      g.rotate(r() * Math.PI);
+      g.fillRect(-w / 2, -h / 2, w, h);
+      g.restore();
+    }
+  }
+  if (kind === 'gravel') {
+    // river pebbles: pale, rounded
+    const cols = ['#d6d0c6', '#a8a299', '#c4bcae', '#8f8a82', '#e2ddd3'];
+    for (let i = 0; i < 520; i++) {
+      g.fillStyle = cols[Math.floor(r() * cols.length)];
       g.beginPath();
-      g.arc(r() * s, r() * s, rad, 0, Math.PI * 2);
+      g.ellipse(r() * s, r() * s, (0.012 + r() * 0.022) * pxPerM, (0.009 + r() * 0.014) * pxPerM, r() * Math.PI, 0, Math.PI * 2);
       g.fill();
     }
   }
@@ -169,7 +183,8 @@ export function paintOverlay(
     ctx.fillStyle = pattern(ctx, 'apron', k);
     ctx.fill();
   }
-  const order: GardenKind[] = ['flowerbed', 'gravel', 'vegbed', 'patio', 'path', 'driveway'];
+  // a 'wall' is built, not painted. Paths come last: where a path crosses a drive, the path shows
+  const order: GardenKind[] = ['flowerbed', 'gravel', 'vegbed', 'patio', 'driveway', 'path'];
   for (const kind of order) {
     const areas = opts.garden.filter((g) => g.kind === kind && g.points.length >= 3);
     // edging first, then the surfaces over it: where two areas of a kind overlap, the edge shows

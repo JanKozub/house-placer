@@ -154,20 +154,31 @@ export const PZT_CARS: Car[] = carsAt(PZT.placement);
 // A project that does not stand where the PZT puts the house has its own forecourt, gates and cars.
 // They replace the PZT ones (same ids) while that project is shown; everything else in the garden
 // is shared by all projects.
-// Compromise variant: the same drawn yard, 2.5 m further from the north-west boundary with the
-// house, which leaves a planting strip along that fence. Its two far corners are again 0.3 m inside
-// the north-east boundary, and the gate and wicket moved 2.49 m along the fence with the garage door.
+// Compromise variant: the entrance is redrawn (see src/site/gardenPlan.ts). The cobbled drive is
+// only as wide as two cars and a turn need: 7 m in front of the garage door, straight to the
+// sliding gate, its far corners 0.3 m inside the north-east boundary. The wicket stays right
+// beside the gate, and people walk on their own path from it to the front steps; the rest of the
+// PZT's yard is garden.
 // ---------------------------------------------------------------------------------------------
 export interface SiteLayout { driveway: GardenArea; gates: Gate[]; cars: Car[] }
 
-const MID_YARD: P2[] = [[-0.85, 8.7], [-0.85, 9.9], [3.04, 9.9], [3.04, 19.88], [7.4, 19.88], [7.4, 22.34], [18.18, 21.54], [19.27, 12.4], [14.3, 12.4], [7.4, 12.4], [7.4, 8.7]];
+/** plan Y of the line 0.3 m inside the north-east boundary, in the compromise variant's plan coordinates */
+export const midFenceLine = (X: number) => 22.34 - 0.0742 * (X - 7.4);
+/**
+ * The drive of the compromise variant, in its plan coordinates: its left edge runs from the garage
+ * door's jamb (X 8.2) to the sliding gate's post (X 8.55 at the fence), its right edge is X 15.2.
+ */
+export const MID_DRIVE = { left: 8.2, leftAtFence: 8.55, right: 15.2 };
+/** X of the drive's left edge at plan Y */
+export const midDriveLeft = (Y: number) => MID_DRIVE.left + ((MID_DRIVE.leftAtFence - MID_DRIVE.left) * (Y - 12.4)) / (midFenceLine(MID_DRIVE.leftAtFence) - 12.4);
+const MID_YARD: P2[] = [[MID_DRIVE.left, 12.4], [MID_DRIVE.right, 12.4], [MID_DRIVE.right, midFenceLine(MID_DRIVE.right)], [MID_DRIVE.leftAtFence, midFenceLine(MID_DRIVE.leftAtFence)]];
 
 export const PROJECT_LAYOUT: Record<string, SiteLayout> = {
   [argania2Mid.id]: {
     driveway: { id: PZT_DRIVEWAY.id, kind: 'driveway', points: MID_YARD.map((p) => fromPlanAt(p, MID_PLACEMENT)) },
     gates: [
       { id: 'pzt-gate', edge: 0, from: 33.0, to: 37.5, kind: 'sliding' },
-      { id: 'pzt-wicket', edge: 0, from: 31.75, to: 32.75, kind: 'wicket' },
+      { id: 'pzt-wicket', edge: 0, from: 31.75, to: 32.75, kind: 'wicket' }, // right beside the gate
     ],
     cars: carsAt(MID_PLACEMENT),
   },
@@ -175,7 +186,18 @@ export const PROJECT_LAYOUT: Record<string, SiteLayout> = {
 
 const swap = <T extends { id: string }>(items: T[], own: T[] | undefined): T[] => (own ? items.map((i) => own.find((o) => o.id === i.id) ?? i) : items);
 /** the garden areas, cars and gates as laid out for a project (see PROJECT_LAYOUT) */
-export const layoutGarden = (projectId: string, garden: GardenArea[]) => swap(garden, PROJECT_LAYOUT[projectId] && [PROJECT_LAYOUT[projectId].driveway]);
+export const layoutGarden = (projectId: string, garden: GardenArea[]) => swap(frontOf(projectId, garden), PROJECT_LAYOUT[projectId] && [PROJECT_LAYOUT[projectId].driveway]);
+/** the trees and plants as shown for a project */
+export const layoutTrees = (projectId: string, trees: Tree[]) => frontOf(projectId, trees);
+/**
+ * The redrawn entrance (ids starting with FRONT) is designed around the compromise variant's house,
+ * drive and wicket: with another house project it is left out, and the PZT's forecourt stays clear.
+ */
+export const FRONT = 'g-front';
+const frontOf = <T extends { id: string }>(projectId: string, items: T[]): T[] => {
+  if (projectId === argania2Mid.id || !items.some((i) => i.id.startsWith(FRONT))) return items;
+  return items.filter((i) => !i.id.startsWith(FRONT));
+};
 export const layoutCars = (projectId: string, cars: Car[]) => {
   // the cars in the garage belong to Dom w Arganiach: another house has no garage there
   const own = WITH_GARAGE.has(projectId) ? cars : cars.filter((c) => !c.id.startsWith('garage-'));
