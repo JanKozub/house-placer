@@ -12,7 +12,11 @@ export interface GardenArea { id: string; kind: GardenKind; points: P2[] }
 export type TreeKind = 'deciduous' | 'conifer' | 'shrub' | 'birch' | 'thuja' | 'grass' | 'lavender' | 'hydrangea' | 'boxwood' | 'globe' | 'maple' | 'rock' | 'firepit';
 export interface Tree { id: string; kind: TreeKind; x: number; z: number; height: number }
 /** a parked car: centre in site coords, rot = three.js rotation about Y (car front = local +x) */
-export interface Car { id: string; x: number; z: number; rot: number; color: string }
+export interface Car {
+  id: string; x: number; z: number; rot: number; color: string;
+  /** how far above the ground its wheels stand (a car on a floor that lies over the ground) */
+  lift?: number;
+}
 
 /** what the plan view dimensions: corner → every plot edge, wall → facing edges (WT §12), or nothing */
 export type DimsMode = 'corners' | 'walls' | 'off';
@@ -182,6 +186,11 @@ export function migrateState(state: unknown, version: number) {
     const hasT = new Set(trees.map((t) => t.id)), hasG = new Set(garden.map((g) => g.id));
     out = { ...out, trees: [...trees, ...GARDEN_PLANTS.filter((t) => !hasT.has(t.id))], garden: [...garden, ...GARDEN_AREAS.filter((g) => !hasG.has(g.id))] };
   }
+  if (version < 9) {
+    // two more cars, parked inside the garage (to see how they fit)
+    const cars = out.cars ?? [], has = new Set(cars.map((c) => c.id));
+    out = { ...out, cars: [...cars, ...PZT_CARS.filter((c) => c.id.startsWith('garage-') && !has.has(c.id))] };
+  }
   return out;
 }
 
@@ -254,7 +263,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'house-placer-v1',
-      version: 8,
+      version: 9,
       migrate: (state, version) => migrateState(state, version) as AppState,
       partialize: (s) => ({
         tab: s.tab,

@@ -116,7 +116,9 @@ Two switches under "Wyświetlanie" open the house up:
 
 The geometry is built in three layers for this (`buildHouseLayers` in `src/house/geometry.ts`: base, upper, roof), and the outer walls are split at the underside of the attic slab.
 
-Known simplifications: the garage floor is drawn at the house floor level in the lowered-garage variants too, the catalogue's entrance is 140/210 (it was drawn 150/210 before), and the fireplace flue moved 35 cm to where the attic plan has it.
+In the two split-level variants the garage floor really is lower, and the boiler room with it, since it is entered from the garage (`interior.lowered`, set up in `src/house/argania2-low.ts`). The floor slab is cut out there and replaced by a concrete floor one drop lower. The walls around it go down to that floor. The door from the vestibule opens towards the vestibule and has steps behind it: three in the compromise, nine with the 1.5 m drop. The side door from the covered entrance has three steps inside in the compromise and is left out with the 1.5 m drop. The ground under the house steps down with the floor, and the garage's units, the boiler and the tank stand on the lower floor.
+
+Known simplifications: the catalogue's entrance is 140/210 (it was drawn 150/210 before), and the fireplace flue moved 35 cm to where the attic plan has it.
 
 ## Garden
 
@@ -144,6 +146,12 @@ New plant kinds, all with their own planting tool: `grass`, `lavender`, `hydrang
 Paving now ends in a kerb (`src/site/GardenFeatures.tsx`): a 10 cm kerb, 4.5 cm proud, along every edge that has paving on one side only. There is none where a drive runs into the forecourt, at a wall or in a gateway, and the painted edge follows the same rule, so no line crosses the paving where two areas meet. Beds get a thin dark edging.
 
 The garden is laid out for the compromise variant; with another house project the beds near the house stay where they are.
+
+## Cars
+
+Parked cars (`src/site/Cars.tsx`) are lofted from cross-sections along the car: curved flanks, a rounded nose and tail, wheel arches, a cabin that leans in towards the roof, and separate glass for the windscreen, the side windows between their pillars and the rear window. They have alloy wheels in dark wells, lights, a grille, number plates, mirrors, door handles, and metallic paint under a clear coat. There are two body styles, a compact SUV with roof rails and a hatchback; which one a car gets follows from its id.
+
+By default two cars stand on the forecourt and two inside the garage, where the catalogue plan draws them: nose to the back wall, about 0.5 m apart, clear of the units, the east wall's shelf and the steps at the doors. Hide the upper storey ("Ukryj piętro") to see them. They are shown only with Dom w Arganiach and its variants, since another house has no garage in that spot.
 
 ## Extra buildings
 

@@ -135,6 +135,10 @@ export interface FacadeZone {
 export type Facing = 'N' | 'S' | 'E' | 'W';
 
 export interface InteriorDoor {
+  /** name, for variants that change this door */
+  id?: string;
+  /** threshold above the storey's floor (negative for a door on a lowered floor); default 0 */
+  sill?: number;
   /** centre of the opening, metres along the wall from `a` */
   at: number;
   width: number;
@@ -147,8 +151,12 @@ export interface InteriorDoor {
 }
 
 export interface InteriorWall {
+  /** name, for variants that change this wall */
+  id?: string;
   a: Vec2;
   b: Vec2;
+  /** foot of the wall below the storey's floor (negative), where it stands on a lowered floor; default 0 */
+  base?: number;
   /** thickness (default: house.innerWallThickness) */
   t?: number;
   doors?: InteriorDoor[];
@@ -178,6 +186,8 @@ export interface FurnitureItem {
   opt?: string | number;
   /** colour variant: dark fronts / dark upholstery */
   dark?: boolean;
+  /** floor it stands on, relative to the storey's (negative on a lowered floor) */
+  level?: number;
 }
 
 /** one straight flight: `treads` steps of `going` from `from` (centre of the first riser) in direction `dir` */
@@ -197,12 +207,18 @@ export interface Storey {
   knee?: number;
   walls: InteriorWall[];
   /** floor finishes that are not the default timber boards: [x0, y0, x1, y1] */
-  floors: { rect: [number, number, number, number]; finish: FloorFinish }[];
+  floors: { rect: [number, number, number, number]; finish: FloorFinish; level?: number }[];
   items: FurnitureItem[];
 }
 
 export interface Interior {
   ground: Storey;
+  /**
+   * Part of the ground storey with a lower floor (a split-level garage): its outline (orthogonal),
+   * running inside the walls around it and out to the façade where a door opens onto lower ground,
+   * and its floor relative to ±0.00. The floor there is concrete.
+   */
+  lowered?: { outline: Vec2[]; level: number };
   /** the storey on `upperFloor` (a usable attic) */
   upper?: Storey;
   stairs?: { flights: StairFlight[]; landings: StairLanding[] };

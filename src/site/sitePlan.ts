@@ -118,6 +118,11 @@ export const PZT_DRIVEWAY: GardenArea = {
   ],
 };
 
+/** where the two cars in the garage stand, in the house's plan coordinates (the garage is X 7.85–13.85, Y 5.98–11.95) */
+export const GARAGE_CARS: P2[] = [[9.55, 9.4], [11.9, 9.4]];
+/** house projects that have this garage */
+const WITH_GARAGE = new Set([argania2.id, argania2Low.id, argania2Mid.id]);
+
 /** gates set into the fence: plot edge, metres along it from its first vertex, kind */
 export interface Gate { id: string; edge: number; from: number; to: number; kind: 'sliding' | 'wicket' }
 
@@ -127,13 +132,20 @@ export const PZT_GATES: Gate[] = [
   { id: 'pzt-wicket', edge: 0, from: 34.24, to: 35.24, kind: 'wicket' },
 ];
 
-/** two cars parked nose-in in front of the garage door */
+/**
+ * Two cars parked nose-in in front of the garage door, and two more inside the garage, where the
+ * catalogue plan draws them (nose to the back wall, 0.5 m between them, clear of the steps at the
+ * doors). Those stand on the garage floor, which lies 3 cm over the ground under it.
+ */
 const carsAt = (pl: Placement): Car[] => {
   const c0 = fromPlanAt([0, 0], pl), c1 = fromPlanAt([0, -1], pl); // plan −Y (towards the garage) in site coords
   const rot = Math.round(Math.atan2(-(c1[1] - c0[1]), c1[0] - c0[0]) * 1000) / 1000;
+  const car = (id: string, X: number, Y: number, color: string, lift?: number): Car => ({ id, x: fromPlanAt([X, Y], pl)[0], z: fromPlanAt([X, Y], pl)[1], rot, color, ...(lift ? { lift } : {}) });
   return [
-    { id: 'pzt-car-1', x: fromPlanAt([9.55, 15.4], pl)[0], z: fromPlanAt([9.55, 15.4], pl)[1], rot, color: '#2e3338' },
-    { id: 'pzt-car-2', x: fromPlanAt([12.1, 15.4], pl)[0], z: fromPlanAt([12.1, 15.4], pl)[1], rot, color: '#d8dbde' },
+    car('pzt-car-1', 9.55, 15.4, '#2e3338'),
+    car('pzt-car-2', 12.1, 15.4, '#d8dbde'),
+    car('garage-car-1', GARAGE_CARS[0][0], GARAGE_CARS[0][1], '#7d1f1f', 0.03),
+    car('garage-car-2', GARAGE_CARS[1][0], GARAGE_CARS[1][1], '#35506e', 0.03),
   ];
 };
 export const PZT_CARS: Car[] = carsAt(PZT.placement);
@@ -164,7 +176,11 @@ export const PROJECT_LAYOUT: Record<string, SiteLayout> = {
 const swap = <T extends { id: string }>(items: T[], own: T[] | undefined): T[] => (own ? items.map((i) => own.find((o) => o.id === i.id) ?? i) : items);
 /** the garden areas, cars and gates as laid out for a project (see PROJECT_LAYOUT) */
 export const layoutGarden = (projectId: string, garden: GardenArea[]) => swap(garden, PROJECT_LAYOUT[projectId] && [PROJECT_LAYOUT[projectId].driveway]);
-export const layoutCars = (projectId: string, cars: Car[]) => swap(cars, PROJECT_LAYOUT[projectId]?.cars);
+export const layoutCars = (projectId: string, cars: Car[]) => {
+  // the cars in the garage belong to Dom w Arganiach: another house has no garage there
+  const own = WITH_GARAGE.has(projectId) ? cars : cars.filter((c) => !c.id.startsWith('garage-'));
+  return own.length === cars.length ? swap(cars, PROJECT_LAYOUT[projectId]?.cars) : swap(own, PROJECT_LAYOUT[projectId]?.cars);
+};
 export const layoutGates = (projectId: string, gates: Gate[]) => swap(gates, PROJECT_LAYOUT[projectId]?.gates);
 
 /** fence along every edge of plot 664/2 */

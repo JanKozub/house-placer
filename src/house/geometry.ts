@@ -387,7 +387,17 @@ function fillBucket(house: HouseDef): Bucket {
       new THREE.Matrix4().set(1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1),
     );
     for (let i = 0; i < g.attributes.normal.count; i++) g.attributes.normal.setXYZ(i, 0, 1, 0);
-    B.add('floor', g.clone().translate(0, 0.005, 0));
+    const low = house.interior?.lowered;
+    if (low) {
+      // a split-level house: the floor is cut out over the lowered part, which gets its own concrete
+      // floor. Built from rectangles, so the lowered part may reach the façade (through a garage
+      // doorway) without leaving a strip of the upper floor across the opening.
+      const lowRects = outlineRects(low.outline);
+      let rects = outlineRects(house.outline);
+      for (const lr of lowRects) rects = rects.flatMap((r) => subtractRect(r, lr));
+      B.add('floor', rectsUp(house, rects, 0.005));
+      B.add('concrete', rectsUp(house, lowRects, low.level + 0.005));
+    } else B.add('floor', g.clone().translate(0, 0.005, 0));
     // the ceiling goes with what is above it: the upper storey, or the roof of a single-storey house
     if (uf) B.add('ceiling', flat(withVoids(), house.ceilingHeight, false), 'upper');
     else if (house.ceilingOutline) {
@@ -461,6 +471,39 @@ function clipConvex(poly: Vec2[], g: (p: Vec2) => number): Vec2[] {
     }
   }
   return out;
+}
+
+type Rect = [number, number, number, number];
+
+/** rectangle a without rectangle b, as up to four rectangles */
+export function subtractRect(a: Rect, b: Rect): Rect[] {
+  const [ax0, ay0, ax1, ay1] = a, [bx0, by0, bx1, by1] = b;
+  if (bx0 >= ax1 || bx1 <= ax0 || by0 >= ay1 || by1 <= ay0) return [a];
+  const out: Rect[] = [];
+  if (by0 > ay0) out.push([ax0, ay0, ax1, by0]);
+  if (by1 < ay1) out.push([ax0, by1, ax1, ay1]);
+  const y0 = Math.max(ay0, by0), y1 = Math.min(ay1, by1);
+  if (bx0 > ax0) out.push([ax0, y0, bx0, y1]);
+  if (bx1 < ax1) out.push([bx1, y0, ax1, y1]);
+  return out;
+}
+
+/** horizontal rectangles (plan coords) at height y, facing up, with UVs in metres */
+function rectsUp(house: HouseDef, rects: Rect[], y: number) {
+  const pos: number[] = [], uv: number[] = [], nrm: number[] = [];
+  for (const [x0, y0, x1, y1] of rects) {
+    const [ax, az] = toLocal(house, x0, y0), [bx, bz] = toLocal(house, x1, y1);
+    for (const [x, z] of [[ax, az], [ax, bz], [bx, bz], [ax, az], [bx, bz], [bx, az]]) {
+      pos.push(x, y, z);
+      uv.push(x, z);
+      nrm.push(0, 1, 0);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  return g;
 }
 
 /** an orthogonal outline as rectangles [x0, y0, x1, y1] (horizontal bands between its vertex rows) */

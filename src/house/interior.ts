@@ -105,10 +105,11 @@ class Frame {
 }
 
 function itemFrame(house: HouseDef, st: Storey, it: FurnitureItem, add: Add, layer: Layer, ceilAbs: (X: number, Y: number) => number) {
+  const level = st.level + (it.level ?? 0);
   const m = new THREE.Matrix4()
-    .makeTranslation(it.at[0] - house.width / 2, st.level, it.at[1] - house.depth / 2)
+    .makeTranslation(it.at[0] - house.width / 2, level, it.at[1] - house.depth / 2)
     .multiply(new THREE.Matrix4().makeRotationY((TURN[it.face ?? 'S'] * Math.PI) / 2));
-  return new Frame(m, add, layer, ceilAbs, house, st.level);
+  return new Frame(m, add, layer, ceilAbs, house, level);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -501,7 +502,7 @@ function buildWall(house: HouseDef, st: Storey, w: InteriorWall, ceilAbs: (X: nu
     d[1], 0, n[1], o[1] - house.depth / 2,
     0, 0, 0, 1,
   );
-  const lvl = st.level;
+  const lvl = st.level, foot = lvl + (w.base ?? 0);
 
   if (w.h !== undefined) {
     // a low wall or a glass balustrade with a handrail
@@ -522,25 +523,32 @@ function buildWall(house: HouseDef, st: Storey, w: InteriorWall, ceilAbs: (X: nu
   const top = (s: number) => Math.min(ceilAbs(...at(s, -t / 2)), ceilAbs(...at(s, t / 2))) - 0.004;
   const doors = [...(w.doors ?? [])].sort((p, q) => p.at - q.at).map((dr) => {
     const s0 = Math.max(0.02, dr.at - dr.width / 2), s1 = Math.min(L - 0.02, dr.at + dr.width / 2);
-    const head = Math.min(lvl + DOOR_H, Math.min(top(s0), top(s1)) - 0.06);
-    return { dr, s0, s1, head };
-  }).filter((q) => q.head - lvl > 1.2 && q.s1 - q.s0 > 0.3);
+    const sill = Math.max(foot, lvl + (dr.sill ?? 0));
+    const head = Math.min(sill + DOOR_H, Math.min(top(s0), top(s1)) - 0.06);
+    return { dr, s0, s1, sill, head };
+  }).filter((q) => q.head - q.sill > 1.2 && q.s1 - q.s0 > 0.3);
 
-  // outline: along the floor with a notch per door, back along the (possibly sloped) top
-  const pts: Vec2[] = [[0, lvl]];
-  for (const q of doors) pts.push([q.s0, lvl], [q.s0, q.head], [q.s1, q.head], [q.s1, lvl]);
-  pts.push([L, lvl]);
+  // outline: along the foot with a notch per door that starts there, back along the (possibly
+  // sloped) top; a door whose threshold is above the foot (the wall goes on down to a lower floor)
+  // is a hole
+  const pts: Vec2[] = [[0, foot]];
+  for (const q of doors) if (q.sill - foot < 0.01) pts.push([q.s0, foot], [q.s0, q.head], [q.s1, q.head], [q.s1, foot]);
+  pts.push([L, foot]);
   const steps = Math.max(1, Math.ceil(L / 0.12));
   for (let i = steps; i >= 0; i--) {
     const s = (L * i) / steps, v = top(s);
-    pts.push([s, Math.max(v, lvl + 0.01)]);
+    pts.push([s, Math.max(v, foot + 0.01)]);
   }
-  if (Math.max(...pts.map((p) => p[1])) - lvl < 0.05) return;
+  if (Math.max(...pts.map((p) => p[1])) - foot < 0.05) return;
   const shape = new THREE.Shape(pts.map(([u, v]) => new THREE.Vector2(u, v)));
+  for (const q of doors) {
+    if (q.sill - foot < 0.01) continue;
+    shape.holes.push(new THREE.Path([[q.s0, q.sill], [q.s0, q.head], [q.s1, q.head], [q.s1, q.sill]].map(([u, v]) => new THREE.Vector2(u, v))));
+  }
   const g = new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false });
   add('interior', (g.index ? g.toNonIndexed() : g).applyMatrix4(m), layer);
 
-  for (const q of doors) buildDoor(house, w, q.dr, q.s0, q.s1, q.head, lvl, d, n, t, layer, add);
+  for (const q of doors) buildDoor(house, w, q.dr, q.s0, q.s1, q.head, q.sill, d, n, t, layer, add);
 }
 
 function buildDoor(house: HouseDef, w: InteriorWall, dr: InteriorDoor, s0: number, s1: number, head: number, lvl: number, d: Vec2, n: Vec2, t: number, layer: Layer, add: Add) {
@@ -581,7 +589,8 @@ function buildStorey(house: HouseDef, st: Storey, layer: Layer, underRoof: boole
   const ceilAbs = storeyCeiling(house, st, underRoof);
   for (const fl of st.floors) {
     const [x0, y0, x1, y1] = fl.rect;
-    add(fl.finish, planBox(house, x0, x1, y0, y1, st.level + 0.006, st.level + 0.014), layer);
+    const at = st.level + (fl.level ?? 0);
+    add(fl.finish, planBox(house, x0, x1, y0, y1, at + 0.006, at + 0.014), layer);
   }
   for (const w of st.walls) buildWall(house, st, w, ceilAbs, layer, add);
   for (const it of st.items) buildItem(itemFrame(house, st, it, add, layer, ceilAbs), it);

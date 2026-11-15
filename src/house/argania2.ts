@@ -78,17 +78,17 @@ const interior: Interior = {
       { a: [8.51, 2.36], b: [8.51, 3.23], t: 0.1 },
       // room 7
       { a: [9.72, 2.42], b: [9.72, 3.45], doors: [{ at: 0.46, width: 0.85, hinge: 'b', opens: 'E' }] },
-      { a: [9.64, 3.51], b: [13.85, 3.51], t: 0.14 },
+      { id: 'room7South', a: [9.64, 3.51], b: [13.85, 3.51], t: 0.14 },
       // bathroom 8 and the boiler room 9
       { a: [9.64, 3.45], b: [9.64, 5.7], doors: [{ at: 1.42, width: 0.8, hinge: 'b', opens: 'W' }] },
-      { a: [11.14, 3.58], b: [11.14, 5.7], t: 0.18 },
+      { id: 'boilerBath', a: [11.14, 3.58], b: [11.14, 5.7], t: 0.18 },
       // garage back wall: the doorway from the vestibule (sliding door) and the boiler-room door
-      { a: [6.15, 5.84], b: [13.85, 5.84], t: 0.28, doors: [{ at: 0.45, width: 0.9, kind: 'sliding', hinge: 'b', opens: 'N' }, { at: 5.68, width: 0.9, hinge: 'b', opens: 'S' }] },
+      { id: 'garageBack', a: [6.15, 5.84], b: [13.85, 5.84], t: 0.28, doors: [{ at: 0.45, width: 0.9, kind: 'sliding', hinge: 'b', opens: 'N' }, { id: 'boiler', at: 5.68, width: 0.9, hinge: 'b', opens: 'S' }] },
       // fridge niche; kitchen | pantry | vestibule | garage
       { a: [3.89, 5.76], b: [4.6, 5.76] },
       { a: [4.55, 5.82], b: [4.55, 8.25], doors: [{ at: 1.38, width: 0.7, hinge: 'a', opens: 'W' }] },
       { a: [5.83, 6.45], b: [5.83, 8.25] },
-      { a: [7.77, 5.98], b: [7.77, 8.25], t: 0.16, doors: [{ at: 1.77, width: 0.8, hinge: 'a', opens: 'E' }] },
+      { id: 'garageVest', a: [7.77, 5.98], b: [7.77, 8.25], t: 0.16, doors: [{ id: 'garage', at: 1.77, width: 0.8, hinge: 'a', opens: 'E' }] },
     ],
     floors: [
       { rect: [0.45, 5.7, 4.49, 8.25], finish: 'tile' }, // kitchen
