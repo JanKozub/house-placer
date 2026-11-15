@@ -71,15 +71,15 @@ function SkyAndSun({ dir, night, target, shadows }: { dir: THREE.Vector3; night:
 }
 
 /** gravel strip around the house — flat on the building platform, so a cheap separate mesh */
-function ApronMesh({ apron, footprint, y }: { apron: [number, number][]; footprint: [number, number][]; y: number }) {
+function ApronMesh({ apron, footprint, y, ring = true }: { apron: [number, number][]; footprint: [number, number][]; y: number; ring?: boolean }) {
   const geom = useMemo(() => {
     const shape = new THREE.Shape(apron.map(([x, z]) => new THREE.Vector2(x, z)));
-    shape.holes.push(new THREE.Path(footprint.map(([x, z]) => new THREE.Vector2(x, z))));
+    if (ring) shape.holes.push(new THREE.Path(footprint.map(([x, z]) => new THREE.Vector2(x, z))));
     const g = new THREE.ShapeGeometry(shape);
     g.rotateX(Math.PI / 2); // XY → XZ (y = z)
     g.translate(0, y, 0);
     return g;
-  }, [apron, footprint, y]);
+  }, [apron, footprint, y, ring]);
   useEffect(() => () => geom.dispose(), [geom]);
   return (
     <mesh geometry={geom} receiveShadow>
@@ -104,7 +104,7 @@ export function SceneContent({ shadows = true, fixedSun }: { shadows?: boolean; 
       <Terrain site={site} platforms={d.platforms} />
       <Landscape site={site} />
       <Buildings site={site} visible={showBuildings} />
-      <ApronMesh apron={d.apron} footprint={d.footprint} y={d.platformH - site.baseH + 0.015} />
+      <ApronMesh apron={d.apron} footprint={d.footprint} y={d.platformH - site.baseH + 0.015} ring={d.apronRing} />
       <HouseModel house={d.house} placement={placement} floorY={d.floorY} night={night} mats={mats} />
       {d.annexes.map((a) => (
         <group key={a.id}>

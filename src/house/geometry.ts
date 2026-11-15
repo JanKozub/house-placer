@@ -219,8 +219,9 @@ export function buildHouse(house: HouseDef): HouseParts {
     const merged = !!gb && ops.some((o) => o.sill + o.height > top - 1e-9);
     if (merged) mergedGables.add(gb!);
 
+    const base = w.base ?? 0;
     const shape = new THREE.Shape();
-    const u0 = -extA, u1 = L + extB, v0 = -0.02, v1 = top;
+    const u0 = -extA, u1 = L + extB, v0 = base - 0.02, v1 = top;
     shape.moveTo(u0, v0);
     shape.lineTo(u1, v0);
     if (merged) {
@@ -243,7 +244,7 @@ export function buildHouse(house: HouseDef): HouseParts {
         continue;
       }
       const hole = new THREE.Path();
-      rectPath(hole, a0, Math.max(o.sill, 0), a1, o.sill + o.height);
+      rectPath(hole, a0, Math.max(o.sill, base), a1, o.sill + o.height);
       shape.holes.push(hole);
       buildOpening(B, o, w, m, a0, a1);
     }
@@ -252,7 +253,7 @@ export function buildHouse(house: HouseDef): HouseParts {
 
     // plinth band (slightly proud of the façade), split around openings that go below ±0
     const cuts = ops
-      .filter((o) => o.sill < 0)
+      .filter((o) => o.sill < base)
       .map((o) => openingSpan(o, w))
       .sort((a, b) => a.u0 - b.u0);
     let s = u0 - 0.03;
@@ -262,7 +263,7 @@ export function buildHouse(house: HouseDef): HouseParts {
     for (const [a0, a1] of segs) {
       if (a1 - a0 < 0.01) continue;
       const pb = new THREE.BoxGeometry(a1 - a0, P + 0.5, t + 0.06);
-      pb.translate((a0 + a1) / 2, -(P + 0.5) / 2 + 0.0, t / 2 - 0.03);
+      pb.translate((a0 + a1) / 2, base - (P + 0.5) / 2, t / 2 - 0.03);
       boxUVsMetric(pb);
       B.add('plinth', transform(pb, m));
     }

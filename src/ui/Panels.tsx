@@ -5,7 +5,7 @@ import { roofTopAt } from '../house/roof';
 import { HOUSES } from '../house/projects';
 import { setBuildingFloor, setBuildingPlacement, useTarget } from '../house/annex';
 import type { Placement } from '../placement/geom2d';
-import { isPztPlacement, PZT } from '../site/sitePlan';
+import { isPztPlacement, PROJECT_START, PZT } from '../site/sitePlan';
 import { cornerLabel } from '../placement/setbacks';
 import { sunTimes } from '../site/sun';
 import { carvedHeight } from '../site/Terrain';
@@ -233,12 +233,16 @@ export function PlacementPanel() {
           {nearestRoadBearing(site.parcel, pl) !== null && (
             <button onClick={() => setPlacement({ bearing: nearestRoadBearing(site.parcel, pl)! })}>Frontem do najbliższej granicy</button>
           )}
-          {house.id === PZT.projectId && t.id === 'main' && (
+          {PROJECT_START[house.id] && t.id === 'main' && (
             <button
               className="primary"
-              disabled={isPztPlacement(useStore.getState().placement, useStore.getState().floorLevel)}
-              title={`Położenie i poziom ±0,00 = ${f(PZT.floorLevel)} m n.p.m. z ${PZT.source}`}
-              onClick={() => set({ placement: { ...PZT.placement }, floorLevel: PZT.floorLevel })}
+              disabled={isPztPlacement(useStore.getState().placement, useStore.getState().floorLevel, PROJECT_START[house.id])}
+              title={
+                house.id === PZT.projectId
+                  ? `Położenie i poziom ±0,00 = ${f(PZT.floorLevel)} m n.p.m. z ${PZT.source}`
+                  : `Położenie z ${PZT.source}, poziom ±0,00 = ${f(PROJECT_START[house.id].floorLevel)} m n.p.m. tego wariantu`
+              }
+              onClick={() => set({ placement: { ...PROJECT_START[house.id].placement }, floorLevel: PROJECT_START[house.id].floorLevel })}
             >
               Ustaw wg PZT
             </button>

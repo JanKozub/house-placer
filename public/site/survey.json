@@ -299,27 +299,44 @@
 {
 "edge": 0,
 "outer": 0.3,
-"inner": 1.45,
-"to": 33.4,
-"note": "north-east, falls to the boundary; drawn from the east corner up to the lawn in front of the house, none along the forecourt"
+"inner": [
+1.45,
+0.3
+],
+"to": 35.5,
+"heights": [
+null,
+0
+],
+"flat": 9.2,
+"note": "north-east: an embankment drawn as a wedge, widest at the east corner (about 1.4 m high there) and tapering to nothing by the gate, where the ground of 356.0 is kept; behind it the lawn rises gently to the plot level"
 },
 {
 "edge": 1,
-"outer": 1.25,
-"inner": 2.25,
-"note": "north-west"
+"outer": 1.1,
+"inner": [
+1.1,
+2.5
+],
+"from": 8.6,
+"heights": [
+0,
+null
+],
+"flat": 4.5,
+"note": "north-west: a cut drawn as a wedge, widest at the west corner and tapering to nothing beside the garage front (ground 356.5); none from there to the north corner"
 },
 {
 "edge": 2,
 "outer": 1.25,
 "inner": 2.45,
-"note": "south-west (road), part 1"
+"note": "south-west (road), part 1: cut"
 },
 {
 "edge": 3,
 "outer": 1.2,
 "inner": 1.75,
-"note": "south-west (road), part 2"
+"note": "south-west (road), part 2: cut, ending in a point at the south corner"
 },
 {
 "edge": 4,
@@ -330,13 +347,44 @@
 {
 "edge": 5,
 "outer": 0.4,
-"inner": 1.8,
-"note": "south-east"
+"inner": [
+0.9,
+1.8
+],
+"note": "south-east: an embankment drawn as a wedge, from nothing at the south corner (ground 357.1-357.2) to its full height at the east corner"
 }
 ],
-"slopesNote": "Slope bands (skarpy) drawn on the PZT along the plot edges: offsets in metres inside the boundary, measured from the drawing.",
+"slopesNote": "Slopes (skarpy) drawn on the PZT along the plot edges, measured from the drawing: offsets in metres inside the boundary. The PZT draws them as wedges whose tick marks show the fall: cuts on the road and west side, embankments on the east side, each tapering to nothing where the designed ground meets the surveyed ground.",
 "design": {
-"level": 357.05,
-"source": "Pawe\u0142 Grela (investor), 2026-11-11: plot levelled \u2014 0.70 m below the road (south-west), 1.50 m above the neighbour at the east corner; both give ~357.05 m (PL-EVRF2007-NH). The PZT's slope bands are the edges of this levelling."
+"level": 356.95,
+"source": "PZT koncepcja 2026-11-10: \u00b10.00 = 357.00 m (PL-EVRF2007-NH); the garden and the ground at the house are 5 cm below that floor. The PZT's slope wedges are the edges of this levelling: they are highest at the west and east corners (Pawe\u0142 Grela, investor, 2026-11-11: about 0.70 m below the road, 1.50 m above the neighbour at the east corner) and run out to nothing towards the north corner, where the gate is, so the front of the plot falls to the surveyed ground there.",
+"ramps": [
+{
+"edge": 0,
+"outer": 0,
+"inner": 0,
+"from": 35.5,
+"to": 45.28,
+"heights": [
+0,
+0
+],
+"flat": 9.2,
+"note": "the forecourt along the gate: no slope drawn; level in front of the garage door and the entrance, then falling to the surveyed ground on the boundary (355.8-355.9)"
+},
+{
+"edge": 1,
+"outer": 0,
+"inner": 0,
+"from": 0,
+"to": 8.6,
+"heights": [
+0,
+0
+],
+"flat": 4.5,
+"note": "north-west boundary between the north corner and the end of the cut: no slope drawn; the forecourt meets the surveyed ground on the boundary"
+}
+]
 }
 }

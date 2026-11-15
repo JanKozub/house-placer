@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { loadSite, type Site } from './geo/site';
+import { useEffect, useMemo, useState } from 'react';
+import { loadSite, withGround, type Site } from './geo/site';
+import { accessRoads, GROUND_DESIGN } from './site/sitePlan';
 import { DerivedProvider, SiteContext } from './derived';
 import { useStore } from './store';
 import { centroid } from './placement/geom2d';
@@ -25,7 +26,7 @@ export function App() {
           const c = centroid(s.parcel);
           st.set({ placement: { x: Math.round(c[0] * 10) / 10, z: Math.round(c[1] * 10) / 10, bearing: 222, mirror: false }, placementInitialised: true });
         }
-        setSite(s);
+        setSite({ ...s, access: accessRoads(s.parcel, s.roads) });
       })
       .catch((e) => setErr(String(e)));
   }, []);
@@ -35,11 +36,14 @@ export function App() {
     if (site) document.title = `${house.name} na działce ${site.meta.parcelNumber}`;
   }, [house, site]);
 
+  // a project with its own levels gets its own design ground
+  const projectSite = useMemo(() => (site ? withGround(site, GROUND_DESIGN[house.id]) : null), [site, house.id]);
+
   if (err) return <div className="splash">Nie udało się wczytać danych działki: {err}<br />Uruchom <code>npm run fetch-site</code>.</div>;
-  if (!site) return <div className="splash">Wczytywanie działki 664/2…</div>;
+  if (!site || !projectSite) return <div className="splash">Wczytywanie działki 664/2…</div>;
 
   return (
-    <SiteContext.Provider value={site}>
+    <SiteContext.Provider value={projectSite}>
       <DerivedProvider>
       <div className="app">
         <header className="topbar">

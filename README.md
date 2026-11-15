@@ -57,11 +57,28 @@ If no imagery is available, the ground falls back to a synthetic field texture.
 2. Add it to `HOUSE_LIST` in `src/house/projects.ts`.
    A project can have separate buildings (a detached garage): list them in `annexes`, each a full `HouseDef` in its own plan coordinates with a `defaultAt` spot in the house's plan. Every annex gets its own placement, platform and floor level, is dragged and rotated on its own in the plan view (the "Dom | Garaż" switch picks which one the inputs and Q/E act on), and is included in the setback, corner and gap checks.
    Houses with a usable attic or a richer façade can also use: `Opening.level` (the storey an opening serves, e.g. attic windows; sets the eye height of views) and `Opening.shape: 'gable'` (glazing that follows the roof slopes), openings above the wall top inside that wall's gable, `upperFloor` (attic slab with voids), `upperRooms`, `roofWindows`, `facadeZones` (dark render band / wood cladding, cut around openings; colour "Tynk – pas ciemny") and `extras` (boxes for pergolas, canopies, posts).
+   A split-level house (garage on a lower floor) can also use: `WallEdge.base` (a wall that reaches below ±0.00, so its openings can too), `lowerGround` (ground beside the house that lies lower than the building platform, optionally falling away as a drive, with a `hardEdge` where it steps down vertically), `platform` and `apron` (their outlines when the defaults don't fit). See `src/house/argania2-low.ts`.
 3. Run `npm test`. The generic checks run on every project: outline and walls agree, openings fit their walls, roof faces tile the roof outline without steps, and the ridge height matches the section.
 
 ## Default position (PZT)
 
 New visitors start on Dom w Arganiach 2, placed as in the land-development plan "PZT koncepcja" (2026-11-10), with ±0.00 = 357.00 m a.s.l. Returning visitors keep their own changes. "Ustaw wg PZT" in the placement tab puts the house back. The position in `src/site/sitePlan.ts` was measured from the drawing. The map's plot outline was fitted to the GUGiK parcel, agreeing to 5–10 cm. Then the house's outer walls were fitted to the drawn walls. The back-left corner comes out 10.87 m from the south-west boundary, as labelled on the map.
+
+The garden and the ground at the house are 5 cm below that floor (356.95, `design.level` in `public/site/survey.json`), so the house and the entrance are on one level, with no plinth and no entrance step (the catalogue has the ground at −0.32). The PZT prints no ground levels of its own, only ±0.00, so this level is good to about ±0.3 m.
+
+The edges follow the slopes the PZT draws (`slopes` in the same file). They are wedges, wide where they are high and tapering to nothing where the designed ground meets the surveyed ground, and their tick marks show the fall:
+- a cut along the road side and the west half of the north-west side, about 0.85 m at the west corner
+- an embankment along the south-east and north-east sides, from nothing at the south corner to about 1.4 m at the east corner, and from there fading out to nothing by the gate
+
+So the plot is not a flat table. The back and the sides are level, and the front falls to the surveyed ground at the north corner, where the gate is. The map's own heights there are 356.5 in front of the garage, 356.0–356.1 by the gate and 355.9 at the corner, and the national LiDAR model agrees with the map's 58 spot heights to 8 cm. The forecourt (`design.ramps`) is level in front of the garage door and the entrance, then falls about 1.1 m to the gate, roughly 12%. The lawn beside it falls with it, with no bank along the curb, as the PZT draws none. Nothing is built up outside the plot. Earthworks come to about 220 m³ of cut and 330 m³ of fill.
+
+## Lowered-garage variant and the access road
+
+"Dom w Arganiach 2 (garaż niżej)" is the same house with the garage floor 1.50 m below the house floor (`src/house/argania2-low.ts`). The house floor sits at the level of the road behind it (357.80), the garage at 356.30, and nine steps lead up to the entrance. So that the two solutions compare like for like, its ground follows the same rules as the PZT ground (`GROUND_DESIGN` in `src/site/sitePlan.ts`): the garden and the ground at the house 5 cm below the floor, slopes shaped as the PZT draws them (highest at the east corner, running out to nothing by the gate), and a drive that is level in front of the garage door and then falls to the surveyed ground at the gate, with no step and nothing built up outside the plot. Both start at the PZT position, and "Ustaw wg PZT" puts either one back there. The variant differs only in what it is about: the floor level, the lowered garage with its stairs and retaining walls, and slopes that start 2 m inside the fence. Its levels, steps and retaining walls are assumptions, not an architect's design.
+
+Like for like: on the PZT the drive falls 1.04 m from the garage (357.00) to the gate, roughly 12%. In the variant it is level for 2.4 m and then falls 0.37 m, about 5%. With the garage only 1.00 m below the floor (356.80) the variant's drive came out at 11%, hardly gentler, which is why it is 1.50 m. The price is nine steps to the entrance, retaining walls up to 1.5 m beside the forecourt, and about 780 m³ of fill for the raised garden, against about 220 m³ of cut and 330 m³ of fill on the PZT.
+
+Every project shows the planned access road to the gate: gravel, along the outside of the north-east boundary and on past the north corner to the asphalt road (`accessRoads` in `src/site/sitePlan.ts`). It is not on the PZT or in OpenStreetMap, so it stays visible when the OpenStreetMap roads are switched off. It lies on the ground as surveyed.
 
 ## Extra buildings
 
@@ -81,7 +98,7 @@ Extra buildings on the plot (sheds, garages) are added in the placement tab, und
   - The L-shaped plan 14.30 × 12.45 m (7.40 + 6.90, 8.70 + 3.75) with the double garage projecting 3.75 m.
   - Window and door sizes from the plan labels (330/230, 110/230, 220/230, 320/230, 250/140, 90/140, entrance 150/210, garage door 500/225).
   - The attic: 160/220 and 80/140 gable windows, the 560/280 glazed gable over the garage, three 78/140 roof windows and the slab at +3.06 with the void over the living room.
-  - Levels: ground −0.32, ceiling 2.68, knee wall 1.25, a 38° roof with the ridge at +7.98.
+  - Levels: ceiling 2.68, knee wall 1.25, a 38° roof with the ridge at +7.98. The catalogue's ground is −0.32; here it is −0.05, as the plot is levelled to the floor (see "Default position (PZT)"). The lowered-garage variant keeps −0.32.
 
   Read off the elevations or assumed: the 0.80 m overhangs, the attic window sills, the glazed gable's sill (+3.20), chimney positions, the pergola and entrance-canopy heights, and the extent of the dark render and wood cladding. Interior partitions are approximate. The project card PDF is not in `docs/`: archon.pl only emails it after a form with personal data and consents.
 - The extra building "Wiata + magazyn + garaż" comes from the user's own plan and section A-A. It is 12.11 × 7.10 m: wiata 4.50, magazyn 3.51, garaż 4.10, with 24 cm walls. Walls stand at +2.80, the roof is 30° with the ridge at +5.40, and the chimney is 0.50 above the ridge. Those three values only fit if the roof surface at the wall face is +3.35, so the eave box closes the gap above the walls. Assumed: the east window (190/80 at +1.40), the overhangs, and the beam, shutter and oven sizes.

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { P2, Placement } from './placement/geom2d';
-import { PZT, PZT_CARS, PZT_DRIVEWAY, PZT_FENCE_EDGES, PZT_GATES, type Gate } from './site/sitePlan';
+import { PROJECT_START, PZT, PZT_CARS, PZT_DRIVEWAY, PZT_FENCE_EDGES, PZT_GATES, type Gate } from './site/sitePlan';
 
 export type GardenKind = 'driveway' | 'path' | 'patio' | 'flowerbed' | 'gravel';
 export interface GardenArea { id: string; kind: GardenKind; points: P2[] }
@@ -184,8 +184,8 @@ export const useStore = create<AppState>()(
         const saved = { ...s.projectState, [s.projectId]: { placement: s.placement, floorLevel: s.floorLevel, annexes: s.annexes } };
         const next =
           saved[id] ??
-          // a house never placed before starts where the previous one stood — the PZT house at its PZT spot
-          (id === PZT.projectId ? { placement: { ...PZT.placement }, floorLevel: PZT.floorLevel } : { placement: { ...s.placement, mirror: false }, floorLevel: null });
+          // a house never placed before starts where the previous one stood — the PZT houses at their PZT spot
+          (PROJECT_START[id] ? { placement: { ...PROJECT_START[id].placement }, floorLevel: PROJECT_START[id].floorLevel } : { placement: { ...s.placement, mirror: false }, floorLevel: null });
         set({ projectId: id, projectState: saved, placement: next.placement, floorLevel: next.floorLevel, annexes: next.annexes ?? {}, target: 'main', selected: null });
       },
       setPlacement: (p) => set({ placement: { ...get().placement, ...p } }),

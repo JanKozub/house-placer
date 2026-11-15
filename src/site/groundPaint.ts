@@ -186,7 +186,8 @@ export function paintOverlay(
 
 /** OSM roads as surfaced ribbons: asphalt with a gravel shoulder, dirt tracks, paved footways */
 export function paintRoads(ctx: CanvasRenderingContext2D, tr: (p: P2) => [number, number], k: number, roads: Road[]) {
-  const order = (r: Road) => (r.surface === 'asphalt' ? 2 : r.surface === 'paving_stones' ? 1 : 0);
+  // lowest first: tracks, planned gravel drive, pavers, asphalt on top (the drive tucks under the road it joins)
+  const order = (r: Road) => (r.surface === 'asphalt' ? 3 : r.surface === 'paving_stones' ? 2 : r.surface === 'gravel' ? 1 : 0);
   const stroke = (r: Road, w: number, style: string | CanvasPattern) => {
     ctx.beginPath();
     r.pts.forEach((p, i) => (i ? ctx.lineTo(...tr(p)) : ctx.moveTo(...tr(p))));
@@ -201,6 +202,9 @@ export function paintRoads(ctx: CanvasRenderingContext2D, tr: (p: P2) => [number
     if (r.surface === 'asphalt') {
       stroke(r, r.width + 1.0, 'rgba(150,141,124,0.95)'); // gravel shoulder
       stroke(r, r.width, pattern(ctx, 'asphalt', k));
+    } else if (r.surface === 'gravel') {
+      stroke(r, r.width + 0.5, 'rgba(120,130,80,0.5)'); // grassy verge
+      stroke(r, r.width, pattern(ctx, 'apron', k));
     } else if (r.surface === 'paving_stones' || r.surface === 'paved' || r.surface === 'concrete') {
       stroke(r, r.width, pattern(ctx, 'pavers', k));
     } else {

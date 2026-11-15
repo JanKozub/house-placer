@@ -261,8 +261,14 @@ function SiteOverlay() {
     }
     return out;
   }, [site]);
+  const access = site.access[0];
   return (
     <Overlay>
+      {access && (
+        <Label at={[(access.pts[0][0] * 3 + access.pts[1][0]) / 4, (access.pts[0][1] * 3 + access.pts[1][1]) / 4]} className="road-label">
+          {access.name}
+        </Label>
+      )}
       {slopeLines.map((pts, i) => (
         <Lines key={'sl' + i} points={pts} color="#f1f5f9" width={1} opacity={0.7} />
       ))}

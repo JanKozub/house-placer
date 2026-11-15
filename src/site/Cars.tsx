@@ -47,8 +47,12 @@ function CarModel({ car, site, platforms, geo, mats }: { car: Car; site: Site; p
   const c = Math.cos(car.rot), s = Math.sin(car.rot);
   const hs = WHEELS.map(([wx, wz]) => carvedHeight(site, car.x + wx * c + wz * s, car.z - wx * s + wz * c, platforms));
   const y = hs.reduce((a, b) => a + b, 0) / hs.length - site.baseH;
+  // and tilt with it (a sloping drive): pitch from front vs rear axle, roll from left vs right
+  const pitch = Math.atan2((hs[0] + hs[1] - hs[2] - hs[3]) / 2, WHEELS[0][0] - WHEELS[2][0]);
+  const roll = -Math.atan2((hs[0] + hs[2] - hs[1] - hs[3]) / 2, WHEELS[0][1] - WHEELS[1][1]);
   return (
     <group position={[car.x, y, car.z]} rotation={[0, car.rot, 0]} name={`car-${car.id}`}>
+     <group rotation={[roll, 0, pitch]}>
       <mesh geometry={geo.body} material={paint} castShadow receiveShadow />
       <mesh geometry={geo.glass} material={mats.glass} />
       {WHEELS.map(([wx, wz], i) => (
@@ -61,6 +65,7 @@ function CarModel({ car, site, platforms, geo, mats }: { car: Car; site: Site; p
       <mesh geometry={geo.lamp} material={mats.head} position={[2.33, 0.72, -0.6]} />
       <mesh geometry={geo.lamp} material={mats.tail} position={[-2.33, 0.86, 0.62]} />
       <mesh geometry={geo.lamp} material={mats.tail} position={[-2.33, 0.86, -0.62]} />
+     </group>
     </group>
   );
 }

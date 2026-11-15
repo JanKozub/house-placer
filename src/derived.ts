@@ -21,10 +21,32 @@ export const useSite = () => {
 
 /** house bounding rectangle (incl. terrace & porch) in site coords — building platform */
 export function platformPolygon(house: HouseDef, pl: Placement, margin = 1.0): P2[] {
+  if (house.platform) return house.platform.map(([X, Y]) => toSite(toLocal(house, X, Y), pl));
   const rect: P2[] = [
     [-margin, -margin], [house.width + margin, -margin], [house.width + margin, house.depth + margin], [-margin, house.depth + margin],
   ];
   return rect.map(([X, Y]) => toSite(toLocal(house, X, Y), pl));
+}
+
+/**
+ * Ground beside the house that lies lower than its platform (the forecourt of a split-level
+ * garage), as a terrain platform: level at the house, falling away from `fallFromY` outwards.
+ */
+export function lowerGroundPlatform(house: HouseDef, pl: Placement, floorH: number): PlatformSpec | null {
+  const lg = house.lowerGround;
+  if (!lg) return null;
+  const site = ([X, Y]: [number, number]) => toSite(toLocal(house, X, Y), pl);
+  const h = floorH + lg.top;
+  // plan Y of a site point = distance along the house's +Y axis from the line Y = fallFromY
+  const o = site([0, lg.fallFromY ?? 0]), oy = site([0, (lg.fallFromY ?? 0) + 1]);
+  const ay: P2 = [oy[0] - o[0], oy[1] - o[1]];
+  const fall = lg.fall ?? 0;
+  return {
+    polygon: lg.outline.map(site),
+    h,
+    at: fall ? (x, z) => h - fall * Math.max(0, (x - o[0]) * ay[0] + (z - o[1]) * ay[1]) : undefined,
+    hard: lg.hardEdge?.map(site),
+  };
 }
 
 export function autoFloorLevel(site: Site, house: HouseDef, pl: Placement) {
@@ -41,11 +63,13 @@ function buildingGeo(site: Site, house: HouseDef, placement: Placement, floorLev
   const platformPoly = platformPolygon(house, placement);
   const platform: PlatformSpec = { polygon: platformPoly, h: platformH };
   const fp = footprintSite(house, placement);
-  const apron = offsetPolygon(fp, 0.5);
+  // gravel strip: all round by default (a ring around the footprint), or the project's own outline
+  const apron = house.apron ? house.apron.map(([X, Y]) => toSite(toLocal(house, X, Y), placement)) : offsetPolygon(fp, 0.5);
+  const lower = lowerGroundPlatform(house, placement, floorH);
   const earthwork = computeEarthwork(platformPoly, platformH, (x, z) => site.dem.heightAt(x, z), 0.5);
   const setbacks = computeSetbacks(house, placement, site.parcel, buildingLine);
   const corners: CornerDistance[] = nearestCornerDistances(house, placement, site.parcel, patios);
-  return { autoFloor, floorH, platformH, platform, footprint: fp, apron, earthwork, setbacks, corners, floorY: floorH - site.baseH };
+  return { autoFloor, floorH, platformH, platform, lower, footprint: fp, apron, apronRing: !house.apron, earthwork, setbacks, corners, floorY: floorH - site.baseH };
 }
 
 export type BuildingGeo = ReturnType<typeof buildingGeo>;
@@ -90,7 +114,8 @@ function useComputeDerived() {
   }, [site, outbuildings, buildingLine]);
   const geo = useMemo(() => {
     const all = [...annexes, ...extra];
-    const platforms = [main.platform, ...all.map((a) => a.platform)];
+    // lower ground first: where it overlaps a building platform (under a garage wall) it wins
+    const platforms = [main, ...all].flatMap((b) => (b.lower ? [b.lower, b.platform] : [b.platform]));
     // house ↔ each separate building: shortest distance between the walls
     const gaps = all.map((a) => ({ ...polygonGap(main.footprint, a.footprint), id: a.id, label: a.label }));
     return { ...main, annexes: all, platforms, gaps };

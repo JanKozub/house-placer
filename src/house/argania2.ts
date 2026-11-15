@@ -7,7 +7,8 @@
  *
  * Plan coordinates: X → right, Y → down as drawn, metres, origin at the top-left (north-west in the
  * drawing) corner of the outer walls. Front (entrance, garage) is +Y, the garden (terrace) is −Y.
- * ±0.00 = finished ground floor; surrounding ground −0.32.
+ * ±0.00 = finished ground floor. The catalogue has the surrounding ground at −0.32; as adapted for
+ * plot 664/2 the house stands on the levelled plot, with the ground 5 cm below the floor (see PLINTH).
  *
  * From the drawings: overall 14.30 × 12.45 (chains 7.40 + 6.90, 8.70 + 3.75), walls 25 cm
  * Porotherm + 20 cm EPS, ceiling 2.68, attic slab +3.06, knee wall 1.25, roof 38°, ridge +7.98.
@@ -27,6 +28,12 @@ const XW = 7.4; // garage wing west face
 // garage wing front face: 12.40 as adapted on the PZT (2026-11-10: chains 8.70 / 12.40 and 13.85 /
 // 10.15 to the same line); the ARCHON+ catalogue plan has 12.45 (870 + 375)
 const DW = 12.4;
+
+// Floor above the ground around the house. The PZT (2026-11-10) sets ±0.00 = 357.00 and the plot is
+// levelled to about that height (slopes of 0.7 m below the road and 1.5 m at the east corner, per
+// the investor), so the house, the entrance and the forecourt are on one level: no plinth, no steps.
+// The ARCHON+ catalogue section has the ground at −0.32.
+const PLINTH = 0.05;
 
 const RIDGE_TOP = 7.98; // section
 const TOP_AT_WALL = RIDGE_TOP - (D / 2) * T; // roof top surface at the eave walls
@@ -55,10 +62,10 @@ export const argania2: HouseDef = {
   depth: DW,
   usableArea: 204.08,
   footprintArea: 150.82,
-  heightTotal: Math.round((RIDGE_TOP + 0.32) * 100) / 100, // 8.30 to the ridge (spec 8.33 incl. ridge capping)
+  heightTotal: Math.round((RIDGE_TOP + PLINTH) * 100) / 100, // ground to the ridge (catalogue: 8.30 with the ground at −0.32)
   pitchDeg: PITCH_DEG,
 
-  plinth: 0.32,
+  plinth: PLINTH,
   wallThickness: 0.45,
   innerWallThickness: 0.12,
   ceilingHeight: 2.68,
@@ -217,9 +224,8 @@ export const argania2: HouseDef = {
     // terrace under and beside the pergola
     { x0: -0.2, x1: 9.6, y0: -3.85, y1: 0, top: -0.02 },
     { x0: 9.6, x1: W, y0: -3.0, y1: 0, top: -0.02 },
-    // covered entrance and one step
+    // covered entrance, level with the forecourt (the catalogue has one step down, to −0.32)
     { x0: 4.9, x1: XW, y0: D, y1: DW, top: -0.02 },
-    { x0: 4.9, x1: XW, y0: DW, y1: DW + 0.3, top: -0.17 },
   ],
   porches: [],
   extras: [

@@ -12,6 +12,8 @@
 import { toSite, type P2, type Placement } from '../placement/geom2d';
 import { toLocal } from '../house/geometry';
 import { argania2 } from '../house/argania2';
+import { argania2Low } from '../house/argania2-low';
+import type { GroundDesign, Road } from '../geo/site';
 import type { Car, GardenArea } from '../store';
 
 export const PZT: { projectId: string; placement: Placement; floorLevel: number; source: string } = {
@@ -21,14 +23,49 @@ export const PZT: { projectId: string; placement: Placement; floorLevel: number;
   source: 'PZT koncepcja 2026-11-10',
 };
 
-/** is this placement / floor level the PZT one (to the cm / 0.1°)? */
-export const isPztPlacement = (pl: Placement, floorLevel: number | null) =>
-  Math.abs(pl.x - PZT.placement.x) < 0.005 &&
-  Math.abs(pl.z - PZT.placement.z) < 0.005 &&
-  Math.abs(pl.bearing - PZT.placement.bearing) < 0.05 &&
-  pl.mirror === PZT.placement.mirror &&
+/**
+ * The lowered-garage variant: same spot as on the PZT, but the house floor at the level of the road
+ * behind it (≈ 357.80 along the south-west boundary) instead of 0.8 m below it.
+ */
+export const LOW_FLOOR_LEVEL = 357.8;
+
+/** where a project starts when it has never been placed (others start where the last house stood) */
+export const PROJECT_START: Record<string, { placement: Placement; floorLevel: number }> = {
+  [PZT.projectId]: { placement: PZT.placement, floorLevel: PZT.floorLevel },
+  [argania2Low.id]: { placement: PZT.placement, floorLevel: LOW_FLOOR_LEVEL },
+};
+
+/**
+ * Design ground of projects that don't use the PZT's (public/site/survey.json).
+ * Lowered-garage variant: the same rules as the PZT ground, so the two solutions compare like for
+ * like — the garden and the ground at the house 5 cm below the floor, slopes shaped as the PZT draws
+ * them (wedges, highest at the east corner, running out to nothing by the gate) and the front
+ * falling to the surveyed ground at the north corner. What differs is what the variant is about:
+ * the floor at 357.80, and every slope 2 m inside the boundary instead of 0.3–1.25 m, so there is a
+ * strip of untouched ground along the fence. Widths ≈ 1.5 × the height of the slope.
+ */
+export const GROUND_DESIGN: Record<string, GroundDesign> = {
+  [argania2Low.id]: {
+    level: LOW_FLOOR_LEVEL - argania2Low.plinth,
+    slopes: [
+      { edge: 0, outer: 2, inner: [5.3, 2], to: 35.5, heights: [null, 0], flat: 9.2 }, // north-east: 2.2 m at the east corner, nothing by the gate
+      { edge: 1, outer: 2, inner: [4, 2.3], from: 8.6 }, // north-west: beside the garage front (1.3 m) to the west corner (level with the road)
+      { edge: 2, outer: 2, inner: 2.6 }, // south-west (road): the garden is level with it
+      { edge: 3, outer: 2, inner: [2.3, 3] },
+      { edge: 4, outer: 2, inner: 3 },
+      { edge: 5, outer: 2, inner: [3, 5.3] }, // south-east: 0.6 m at the south corner to 2.2 m at the east corner
+    ],
+  },
+};
+
+/** is this placement / floor level the project's reference one (to the cm / 0.1°)? Default: the PZT's. */
+export const isPztPlacement = (pl: Placement, floorLevel: number | null, ref: { placement: Placement; floorLevel: number } = PZT) =>
+  Math.abs(pl.x - ref.placement.x) < 0.005 &&
+  Math.abs(pl.z - ref.placement.z) < 0.005 &&
+  Math.abs(pl.bearing - ref.placement.bearing) < 0.05 &&
+  pl.mirror === ref.placement.mirror &&
   floorLevel !== null &&
-  Math.abs(floorLevel - PZT.floorLevel) < 0.005;
+  Math.abs(floorLevel - ref.floorLevel) < 0.005;
 
 // ---------------------------------------------------------------------------------------------
 // Front yard from the PZT, measured from the drawing. The curb line is the designer's: in the
@@ -77,3 +114,50 @@ export const PZT_CARS: Car[] = (() => {
 
 /** fence along every edge of plot 664/2 */
 export const PZT_FENCE_EDGES = [0, 1, 2, 3, 4, 5];
+
+// ---------------------------------------------------------------------------------------------
+// Access road to the gate. Not on the PZT and not in OpenStreetMap: the user's choice (2026-11-14)
+// is a road along the outside of the north-east boundary, on past the north corner — the same line
+// as the east edge of the neighbouring plot — up to the asphalt road (Pakuz), about 50 m away.
+// ---------------------------------------------------------------------------------------------
+const ACCESS_WIDTH = 3.5;
+
+/** the planned road from the nearest asphalt road to the gate, and the short links to gate and wicket */
+export function accessRoads(parcel: P2[], roads: Road[], gates: Gate[] = PZT_GATES): Road[] {
+  const gate = gates.find((g) => g.kind === 'sliding'), wicket = gates.find((g) => g.kind === 'wicket');
+  if (!gate) return [];
+  const a = parcel[gate.edge], b = parcel[(gate.edge + 1) % parcel.length];
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const d: P2 = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
+  let cx = 0, cz = 0;
+  for (const [x, z] of parcel) { cx += x / parcel.length; cz += z / parcel.length; }
+  let out: P2 = [d[1], -d[0]];
+  if ((cx - (a[0] + b[0]) / 2) * out[0] + (cz - (a[1] + b[1]) / 2) * out[1] > 0) out = [-out[0], -out[1]];
+  const off = ACCESS_WIDTH / 2 + 0.6; // road axis outside the boundary, with a verge at the fence
+  const at = (s: number, o: number): P2 => [a[0] + d[0] * s + out[0] * o, a[1] + d[1] * s + out[1] * o];
+  const start = at((wicket ? Math.min(wicket.from, gate.from) : gate.from) - 1.5, off);
+  // on along the boundary line to the first asphalt road it meets (at most 150 m; else a 40 m stub)
+  let reach = 40;
+  for (const r of roads) {
+    if (r.surface !== 'asphalt') continue;
+    for (let i = 1; i < r.pts.length; i++) {
+      const p = r.pts[i - 1], q = r.pts[i];
+      const ex = q[0] - p[0], ez = q[1] - p[1];
+      const den = d[0] * ez - d[1] * ex;
+      if (Math.abs(den) < 1e-9) continue;
+      const t = ((p[0] - start[0]) * ez - (p[1] - start[1]) * ex) / den;
+      const u = ((p[0] - start[0]) * d[1] - (p[1] - start[1]) * d[0]) / den;
+      if (t > 0 && t < 150 && u >= 0 && u <= 1) reach = reach === 40 ? t : Math.min(reach, t);
+    }
+  }
+  const end: P2 = [start[0] + d[0] * reach, start[1] + d[1] * reach];
+  const link = (g: Gate, id: number, width: number): Road => {
+    const m = (g.from + g.to) / 2;
+    return { id, highway: 'service', name: null, surface: 'gravel', width, pts: [at(m, off), at(m, -0.1)] };
+  };
+  return [
+    { id: -1, highway: 'service', name: 'dojazd do bramy', surface: 'gravel', width: ACCESS_WIDTH, pts: [start, end] },
+    link(gate, -2, gate.to - gate.from),
+    ...(wicket ? [link(wicket, -3, 1.2)] : []),
+  ];
+}

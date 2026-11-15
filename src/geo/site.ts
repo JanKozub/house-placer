@@ -33,32 +33,68 @@ export interface Survey {
    * slope bands (skarpy) along plot edges: offsets inside the boundary (m) of the band's outer and
    * inner line; optional from / to = metres along the edge from its first vertex (default: all of it)
    */
-  slopes?: { edge: number; outer: number; inner: number; from?: number; to?: number }[];
-  /** the plot levelled to one height inside the slope bands (design ground) */
-  design?: { level: number; source: string };
+  slopes?: SlopeBand[];
+  /**
+   * the plot levelled to one height inside the slope bands (design ground); `ramps` are further
+   * bands of that ground that are not drawn as slopes (the drive falling to the gate)
+   */
+  design?: { level: number; source: string; ramps?: SlopeBand[] };
 }
 
 /**
- * The plot levelled to one height (design ground): flat at `level` inside the slope bands; inside
- * each band the ground runs straight from the existing level at the band's outer line to `level`
- * at its inner line; between the boundary and the outer line, and outside the plot, it stays as
- * surveyed. Where bands meet at a corner the lower one wins, so the slopes join without a seam.
+ * A slope band along a plot edge. Offsets are metres inside the boundary; `from` / `to` are metres
+ * along the edge from its first vertex (default: all of it).
+ * - Up to `outer` the surveyed ground stays.
+ * - Between `outer` and `inner` runs the slope, from the surveyed level at the outer line to the
+ *   designed level at the inner line. `inner` may be a pair [at from, at to]: the PZT draws its
+ *   slopes as wedges, wide where they are high and tapering to nothing where the design meets the
+ *   ground.
+ * - The designed level at the inner line is the plot level, unless `heights` [at from, at to] gives
+ *   the slope's height there (m above the surveyed level at the outer line, negative for a cut,
+ *   null = up to the plot level), linear in between.
+ * - Beyond the inner line the ground reaches the plot level at offset `flat` (default: at the
+ *   inner line), so a slope that does not climb to the plot level is followed by a gentle fall.
  */
-export function levelPlot(dem: Dem, parcel: P2[], slopes: NonNullable<Survey['slopes']>, level: number) {
+export interface SlopeBand {
+  edge: number;
+  outer: number;
+  inner: number | [number, number];
+  from?: number;
+  to?: number;
+  heights?: [number | null, number | null];
+  flat?: number;
+  /** metres past `from` / `to` over which the band eases back to the plot level (a side bank) */
+  taper?: number;
+  note?: string;
+}
+
+const innerAt = (b: SlopeBand, q: number) => (Array.isArray(b.inner) ? b.inner[0] + (b.inner[1] - b.inner[0]) * q : b.inner);
+
+/**
+ * The design ground of the plot: `level` inside the slope bands, and in each band the profile
+ * described at SlopeBand. Between the boundary and a band's outer line, and outside the plot, the
+ * ground stays as surveyed. Where bands overlap, the one the point lies deepest in decides.
+ */
+export function levelPlot(dem: Dem, parcel: P2[], slopes: SlopeBand[], level: number) {
   if (!slopes.length) return;
   const n = parcel.length;
   let cx = 0, cz = 0;
   for (const [x, z] of parcel) { cx += x; cz += z; }
   cx /= n; cz /= n;
+  const read = new Dem(new Float32Array(dem.data), dem.width, dem.height, dem.x0, dem.z0, dem.res);
   const edges = slopes.map((b) => {
     const a = parcel[b.edge], c = parcel[(b.edge + 1) % n];
     const L = Math.hypot(c[0] - a[0], c[1] - a[1]);
     const d: P2 = [(c[0] - a[0]) / L, (c[1] - a[1]) / L];
     let nn: P2 = [-d[1], d[0]];
     if ((cx - (a[0] + c[0]) / 2) * nn[0] + (cz - (a[1] + c[1]) / 2) * nn[1] < 0) nn = [-nn[0], -nn[1]];
-    return { ...b, a, L, d, n: nn };
+    const s0 = b.from ?? 0, s1 = b.to ?? L;
+    const baseAt = (sc: number) => read.heightAt(a[0] + d[0] * sc + nn[0] * b.outer, a[1] + d[1] * sc + nn[1] * b.outer);
+    // slope height at the two ends (null: up to the plot level)
+    const h0 = b.heights ? b.heights[0] ?? level - baseAt(s0) : 0, h1 = b.heights ? b.heights[1] ?? level - baseAt(s1) : 0;
+    const reach = Math.max(Array.isArray(b.inner) ? Math.max(...b.inner) : b.inner, b.flat ?? 0);
+    return { ...b, a, L, d, n: nn, s0, s1, h0, h1, reach, baseAt };
   });
-  const read = new Dem(new Float32Array(dem.data), dem.width, dem.height, dem.x0, dem.z0, dem.res);
   let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
   for (const [x, z] of parcel) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
   for (let j = 0; j < dem.height; j++) {
@@ -68,22 +104,34 @@ export function levelPlot(dem: Dem, parcel: P2[], slopes: NonNullable<Survey['sl
       const x = dem.x0 + (i + 0.5) * dem.res;
       if (x < x0 - 1 || x > x1 + 1) continue;
       if (!inPolygon([x, z], parcel)) continue;
-      // the band furthest from being level decides (smallest progress t across its slope)
-      let t = 1, base = level;
+      // the band the point lies deepest in decides (smallest progress t from its outer line to the level)
+      let t = 1, h = level;
       for (const e of edges) {
         const dx = x - e.a[0], dz = z - e.a[1];
         const s = dx * e.d[0] + dz * e.d[1], off = dx * e.n[0] + dz * e.n[1];
-        if (s < (e.from ?? -e.inner) || s > (e.to ?? e.L + e.inner)) continue;
-        const te = Math.max(0, Math.min(1, (off - e.outer) / (e.inner - e.outer)));
-        if (te < t) {
-          t = te;
-          const sc = Math.max(e.from ?? 0, Math.min(e.to ?? e.L, s));
-          base = read.heightAt(e.a[0] + e.d[0] * sc + e.n[0] * e.outer, e.a[1] + e.d[1] * sc + e.n[1] * e.outer);
-        }
+        const lo = e.from ?? -e.reach, hi = e.to ?? e.L + e.reach, tp = e.taper ?? 0;
+        const past = Math.max(lo - s, s - hi, 0); // beyond the band's end
+        if (past > tp || (past > 0 && tp <= 0)) continue;
+        const sc = Math.max(e.s0, Math.min(e.s1, s));
+        const q = e.s1 > e.s0 ? (sc - e.s0) / (e.s1 - e.s0) : 0;
+        const inner = innerAt(e, q), end = Math.max(inner, e.flat ?? inner);
+        if (end - e.outer < 1e-6 || off >= end) continue;
+        let te = Math.max(0, (off - e.outer) / (end - e.outer));
+        if (past > 0) te = 1 - (1 - te) * (1 - past / tp); // side bank: ease back to the level
+        if (te >= t) continue;
+        t = te;
+        if (off <= e.outer) continue; // t = 0: the surveyed ground stays
+        const base = e.baseAt(sc);
+        // designed level at the inner line: the slope's height there, never past the plot level and never away from it
+        const room = level - base, hh = e.h0 + (e.h1 - e.h0) * q;
+        const top = e.heights ? base + (room >= 0 ? Math.max(0, Math.min(hh, room)) : Math.min(0, Math.max(hh, room))) : level;
+        let hc = off < inner ? base + ((top - base) * (off - e.outer)) / (inner - e.outer) : top + ((level - top) * (off - inner)) / Math.max(1e-6, end - inner);
+        if (past > 0) hc = level - (level - hc) * (1 - past / tp);
+        h = hc;
       }
       // between the boundary and the band's outer line the surveyed ground stays
       if (t <= 0) continue;
-      dem.data[j * dem.width + i] = base + (level - base) * t;
+      dem.data[j * dem.width + i] = h;
     }
   }
 }
@@ -103,7 +151,7 @@ function inPolygon(p: P2, poly: P2[]) {
  * it locally so it passes through every surveyed spot height, then apply the design levelling. The local correction is an
  * inverse-distance blend of the remaining differences, fading out within ~8 m of the last point.
  */
-export function fitDemToSurvey(dem: Dem, survey: Survey, parcel: P2[] = []) {
+export function fitDemToSurvey(dem: Dem, survey: Survey, parcel: P2[] = [], level = true) {
   const d = dem.data;
   for (let i = 0; i < d.length; i++) d[i] += survey.datumShift;
 
@@ -133,7 +181,29 @@ export function fitDemToSurvey(dem: Dem, survey: Survey, parcel: P2[] = []) {
   }
   for (let i = 0; i < d.length; i++) d[i] += corr[i];
   // design ground: the plot levelled inside the PZT's slope bands
-  if (survey.design && survey.slopes && parcel.length) levelPlot(dem, parcel, survey.slopes, survey.design.level);
+  if (level && survey.design && survey.slopes && parcel.length) levelPlot(dem, parcel, [...survey.slopes, ...(survey.design.ramps ?? [])], survey.design.level);
+}
+
+/** a design ground for the plot: one level inside slope bands along the edges (see levelPlot) */
+export interface GroundDesign { level: number; slopes: SlopeBand[]; ramps?: SlopeBand[] }
+
+/**
+ * The site with another design ground than the survey's own (a house project with its own levels):
+ * the surveyed terrain levelled to `design`. Cached per design, so switching projects is cheap.
+ */
+const groundCache = new WeakMap<Site, Map<GroundDesign, Site>>();
+export function withGround(site: Site, design: GroundDesign | null | undefined): Site {
+  if (!design || !site.surveyed) return site;
+  let m = groundCache.get(site);
+  if (!m) groundCache.set(site, (m = new Map()));
+  let s = m.get(design);
+  if (!s) {
+    const dem = new Dem(new Float32Array(site.surveyed), site.dem.width, site.dem.height, site.dem.x0, site.dem.z0, site.dem.res);
+    levelPlot(dem, site.parcel, [...design.slopes, ...(design.ramps ?? [])], design.level);
+    s = { ...site, dem, slopes: slopeQuads(site.parcel, design.slopes) };
+    m.set(design, s);
+  }
+  return s;
 }
 
 export interface LandscapeMeta {
@@ -214,10 +284,14 @@ export interface Site {
   buildings: Building[];
   /** slope bands (skarpy) from the PZT, as quads along the plot edges: outer line a0→a1, inner line b0→b1 */
   slopes: { a0: P2; a1: P2; b0: P2; b1: P2 }[];
+  /** the terrain as surveyed, before the design levelling (for projects with their own ground) */
+  surveyed: Float32Array | null;
+  /** planned access road to the gate (not from OpenStreetMap; always drawn) */
+  access: Road[];
 }
 
 /** the slope bands of a survey as quads in site-local coords */
-export function slopeQuads(parcel: P2[], slopes: NonNullable<Survey['slopes']>) {
+export function slopeQuads(parcel: P2[], slopes: SlopeBand[]) {
   const n = parcel.length;
   let cx = 0, cz = 0;
   for (const [x, z] of parcel) { cx += x; cz += z; }
@@ -230,7 +304,7 @@ export function slopeQuads(parcel: P2[], slopes: NonNullable<Survey['slopes']>) 
     if ((cx - (a[0] + c[0]) / 2) * nn[0] + (cz - (a[1] + c[1]) / 2) * nn[1] < 0) nn = [-nn[0], -nn[1]];
     const at = (s: number, o: number): P2 => [a[0] + d[0] * s + nn[0] * o, a[1] + d[1] * s + nn[1] * o];
     const s0 = b.from ?? 0, s1 = b.to ?? L;
-    return { a0: at(s0, b.outer), a1: at(s1, b.outer), b0: at(s0, b.inner), b1: at(s1, b.inner) };
+    return { a0: at(s0, b.outer), a1: at(s1, b.outer), b0: at(s0, innerAt(b, 0)), b1: at(s1, innerAt(b, 1)) };
   });
 }
 
@@ -249,7 +323,12 @@ export function makeSite(
   const toLocal = ([e, n]: [number, number]): P2 => [e - E, -(n - N)];
   const parcel = parcelRing.map(toLocal);
   const dem = new Dem(new Float32Array(demBuf), meta.dem.width, meta.dem.height, meta.bbox.minE - E, -(meta.bbox.maxN - N), meta.dem.res);
-  if (survey) fitDemToSurvey(dem, survey, parcelRing.map(toLocal));
+  let surveyed: Float32Array | null = null;
+  if (survey) {
+    fitDemToSurvey(dem, survey, parcel, false);
+    surveyed = new Float32Array(dem.data);
+    if (survey.design && survey.slopes) levelPlot(dem, parcel, [...survey.slopes, ...(survey.design.ramps ?? [])], survey.design.level);
+  }
   let minH = Infinity;
   for (const [x, z] of parcel) minH = Math.min(minH, dem.heightAt(x, z));
   // meridian convergence for PUWG 1992 (central meridian 19°E)
@@ -269,6 +348,8 @@ export function makeSite(
     land,
     buildings,
     slopes: survey?.slopes ? slopeQuads(parcel, survey.slopes) : [],
+    surveyed,
+    access: [],
   };
 }
 

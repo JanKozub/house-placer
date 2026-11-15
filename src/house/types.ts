@@ -41,6 +41,24 @@ export interface WallEdge {
   top?: number;
   /** open side (a wiata on posts): nothing is built, but it still counts for setbacks, as open */
   open?: boolean;
+  /** bottom of this wall below ±0.00 (negative), where the ground in front of it is lower (a
+   *  split-level garage); openings in it may have a sill down to this level. Default 0. */
+  base?: number;
+}
+
+/**
+ * Ground beside the house that lies lower than the building platform (a forecourt in front of a
+ * split-level garage). Plan coords; heights relative to ±0.00.
+ */
+export interface LowerGround {
+  outline: Vec2[];
+  /** ground level at the house */
+  top: number;
+  /** from this plan Y outwards the ground falls by `fall` per metre (a drive down to the gate) */
+  fallFromY?: number;
+  fall?: number;
+  /** part of the outline where the ground steps down vertically (walls, stairs), as a polyline */
+  hardEdge?: Vec2[];
 }
 
 export interface Slab { x0: number; x1: number; y0: number; y1: number; top: number }
@@ -187,4 +205,11 @@ export interface HouseDef {
   ceilingOutline?: Vec2[];
   facadeZones?: FacadeZone[];
   extras?: ExtraBox[];
+
+  // ---- optional: split-level houses ----
+  /** building platform in plan coords (default: the bounding rectangle with a 1 m margin) */
+  platform?: Vec2[];
+  /** gravel strip around the house in plan coords, a simple polygon (default: 0.5 m all round) */
+  apron?: Vec2[];
+  lowerGround?: LowerGround;
 }

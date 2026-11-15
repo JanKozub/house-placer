@@ -11,15 +11,24 @@ export interface PlatformSpec {
   polygon: P2[];
   /** platform height, m a.s.l. */
   h: number;
+  /** a sloping platform (a drive): its height at a point; default `h` everywhere */
+  at?: (x: number, z: number) => number;
+  /** polyline along which the ground steps down vertically (retaining walls, a garage front):
+   *  the terrain mesh gets a sharp edge there instead of a slope one grid cell wide */
+  hard?: P2[];
 }
 
-function distToPolygon(p: P2, poly: P2[]) {
-  let d = Infinity;
-  for (let i = 0; i < poly.length; i++) {
-    const q = closestOnSegment(p, poly[i], poly[(i + 1) % poly.length]);
-    d = Math.min(d, Math.hypot(p[0] - q[0], p[1] - q[1]));
+const platformH = (pl: PlatformSpec, x: number, z: number) => (pl.at ? pl.at(x, z) : pl.h);
+
+/** closest point of a polyline (closed = polygon outline) and its distance */
+function closestOnLine(p: P2, line: P2[], closed: boolean) {
+  let d = Infinity, q: P2 = line[0];
+  for (let i = 0; i < line.length - (closed ? 0 : 1); i++) {
+    const c = closestOnSegment(p, line[i], line[(i + 1) % line.length]);
+    const dc = Math.hypot(p[0] - c[0], p[1] - c[1]);
+    if (dc < d) { d = dc; q = c; }
   }
-  return d;
+  return { d, q };
 }
 
 /**
@@ -32,15 +41,16 @@ export function carvedHeight(site: Site, x: number, z: number, platforms: Platfo
   if (!platforms) return h;
   const list = Array.isArray(platforms) ? platforms : [platforms];
   const p: P2 = [x, z];
-  for (const pl of list) if (pointInPolygon(p, pl.polygon)) return pl.h;
+  for (const pl of list) if (pointInPolygon(p, pl.polygon)) return platformH(pl, x, z);
   let best = h, bestD = Infinity;
   for (const pl of list) {
-    const d = distToPolygon(p, pl.polygon);
-    const delta = h - pl.h;
+    const { d, q } = closestOnLine(p, pl.polygon, true);
+    const ph = platformH(pl, q[0], q[1]);
+    const delta = h - ph;
     const w = THREE.MathUtils.clamp(Math.abs(delta) * 2, 0.3, 10); // 1:2 embankment
     if (d >= w || d >= bestD) continue;
     const t = d / w;
-    best = pl.h + delta * (t * t * (3 - 2 * t));
+    best = ph + delta * (t * t * (3 - 2 * t));
     bestD = d;
   }
   return best;
@@ -59,7 +69,8 @@ export function Terrain({ site, platforms }: { site: Site; platforms: PlatformSp
   const lawn = useStore((s) => s.layers.parcelLawn);
   const useOrtho = useStore((s) => s.layers.ortho);
   const showRoads = useStore((s) => s.layers.roads !== false);
-  const roads = useMemo(() => (showRoads ? site.roads : []), [showRoads, site.roads]);
+  // the planned access road is part of the design, so it stays when the OpenStreetMap roads are off
+  const roads = useMemo(() => (showRoads ? [...site.roads, ...site.access] : site.access), [showRoads, site.roads, site.access]);
   const dem = site.dem;
   const invalidate = useThree((s) => s.invalidate);
 
@@ -96,9 +107,20 @@ export function Terrain({ site, platforms }: { site: Site; platforms: PlatformSp
   const dirtyRef = useRef<[number, number, number, number] | null>(null);
   useEffect(() => {
     const pos = geom.getAttribute('position') as THREE.BufferAttribute;
+    const uv = geom.getAttribute('uv') as THREE.BufferAttribute;
     const W = dem.width;
-    for (const k of carvedRef.current) pos.setY(k, dem.data[k] - site.baseH);
+    const gridX = (k: number) => dem.x0 + ((k % W) + 0.5) * dem.res, gridZ = (k: number) => dem.z0 + (Math.floor(k / W) + 0.5) * dem.res;
+    const place = (k: number, x: number, y: number, z: number) => {
+      pos.setXYZ(k, x, y, z);
+      uv.setXY(k, (x - dem.x0) / dem.sizeX, 1 - (z - dem.z0) / dem.sizeZ);
+    };
+    for (const k of carvedRef.current) place(k, gridX(k), dem.data[k] - site.baseH, gridZ(k));
     carvedRef.current = [];
+    // vertical steps: every vertex within a triangle's reach of a hard edge moves onto it (2 cm to
+    // its own side), so the step is a sharp face along the wall instead of a ramp one cell wide
+    const hard = platforms.flatMap((pl) => (pl.hard && pl.hard.length > 1 ? [pl.hard] : []));
+    const SNAP = dem.res * 1.45, EPS = 0.02;
+    const snappedSet = new Set<number>();
     // region whose normals must be recomputed: last carve ∪ this carve
     let box = dirtyRef.current;
     if (platforms.length) {
@@ -113,18 +135,33 @@ export function Terrain({ site, platforms }: { site: Site; platforms: PlatformSp
       for (let j = j0; j <= j1; j++)
         for (let i = i0; i <= i1; i++) {
           const k = j * W + i;
-          const x = pos.getX(k), z = pos.getZ(k);
+          let x = gridX(k), z = gridZ(k), snapped = false;
+          for (const line of hard) {
+            const { d, q } = closestOnLine([x, z], line, false);
+            const end = line[0], end2 = line[line.length - 1];
+            // past the free ends of the edge the step fades into a slope again: leave those alone
+            const atEnd = Math.hypot(q[0] - end[0], q[1] - end[1]) < 1e-6 || Math.hypot(q[0] - end2[0], q[1] - end2[1]) < 1e-6;
+            if (d < SNAP && d > 1e-6 && !atEnd) {
+              const gx = x, gz = z;
+              x = q[0] + ((gx - q[0]) / d) * EPS;
+              z = q[1] + ((gz - q[1]) / d) * EPS;
+              snapped = true;
+              break;
+            }
+          }
           const h = carvedHeight(site, x, z, platforms);
-          if (Math.abs(h - dem.data[k]) > 1e-4) {
+          if (snapped || Math.abs(h - dem.data[k]) > 1e-4) {
             // keep the mesh slightly under the platform so slabs never z-fight
-            pos.setY(k, h - site.baseH - (platforms.some((pl) => pointInPolygon([x, z], pl.polygon)) ? 0.03 : 0));
+            place(k, x, h - site.baseH - (platforms.some((pl) => pointInPolygon([x, z], pl.polygon)) ? 0.03 : 0), z);
             carvedRef.current.push(k);
+            if (snapped) snappedSet.add(k);
           }
         }
       dirtyRef.current = [i0, i1, j0, j1];
       box = box ? [Math.min(box[0], i0), Math.max(box[1], i1), Math.min(box[2], j0), Math.max(box[3], j1)] : [i0, i1, j0, j1];
     } else dirtyRef.current = null;
     pos.needsUpdate = true;
+    uv.needsUpdate = true;
     // regular grid: per-vertex normals from central height differences, only where heights changed
     // (recomputing the whole 100k-vertex mesh on every house drag was the main stall)
     if (box) {
@@ -135,7 +172,9 @@ export function Terrain({ site, platforms }: { site: Site; platforms: PlatformSp
         for (let i = Math.max(0, box[0] - 1); i <= Math.min(W - 1, box[1] + 1); i++) {
           const dx = (y(i + 1, j) - y(i - 1, j)) / r2, dz = (y(i, j + 1) - y(i, j - 1)) / r2;
           const l = Math.hypot(dx, 1, dz);
-          nrm.setXYZ(j * W + i, -dx / l, 1 / l, -dz / l);
+          // vertices on a hard edge sit at the top / foot of a vertical face: keep the ground beside it flat-shaded
+          if (snappedSet.has(j * W + i)) nrm.setXYZ(j * W + i, 0, 1, 0);
+          else nrm.setXYZ(j * W + i, -dx / l, 1 / l, -dz / l);
         }
       nrm.needsUpdate = true;
     }
