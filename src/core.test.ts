@@ -8,8 +8,8 @@ import { ambrozja17Detached, detachedGarage } from './house/ambrozja17-detached'
 import { buildingDef, defaultAnnexPlacement } from './house/annex';
 import { carvedHeight } from './site/Terrain';
 import { argania2 } from './house/argania2';
-import { accessRoads, GROUND_DESIGN, isPztPlacement, LOW_FLOOR_LEVEL, PZT, PZT_CARS, PZT_DRIVEWAY, PZT_GATES } from './site/sitePlan';
-import { argania2Low, DRIVE_FALL, GARAGE_DROP, RISERS } from './house/argania2-low';
+import { accessRoads, GROUND_DESIGN, isPztPlacement, layoutCars, layoutGarden, layoutGates, LOW_FLOOR_LEVEL, MID_FLOOR_LEVEL, MID_PLACEMENT, MID_SHIFT, PROJECT_LAYOUT, PZT, PZT_CARS, PZT_DRIVEWAY, PZT_GATES } from './site/sitePlan';
+import { argania2Low, argania2Mid, DRIVE_FALL, GARAGE_DROP, MID_DRIVE_FALL, MID_FLAT, MID_GARAGE_DROP, MID_RISERS, RISERS } from './house/argania2-low';
 import { lowerGroundPlatform, platformPolygon } from './derived';
 import { fenceOpenings } from './site/Garden';
 import { toLocal } from './house/geometry';
@@ -672,6 +672,131 @@ describe('site data (public/site)', () => {
       expect(toWicket.width).toBe(1.2);
       expect(pointInPolygon(toGate.pts[1], base.parcel)).toBe(true);
       expect(pointInPolygon(toGate.pts[0], base.parcel)).toBe(false);
+    });
+  });
+
+  describe('compromise variant: floor 357.40, garage three steps lower, 2.5 m further from the north-west boundary, plot not levelled', () => {
+    const survey = JSON.parse(readFileSync('public/site/survey.json', 'utf8')) as Survey;
+    const roads = JSON.parse(readFileSync('public/site/roads.json', 'utf8')) as Road[];
+    const base = makeSite(meta, parcel.ring, [], dem.buffer.slice(dem.byteOffset, dem.byteOffset + dem.byteLength), false, roads, [], [], survey);
+    const mid = withGround(base, GROUND_DESIGN[argania2Mid.id]);
+    const pl = MID_PLACEMENT, lay = PROJECT_LAYOUT[argania2Mid.id];
+    const at = (X: number, Y: number) => toSite(toLocal(argania2Mid, X, Y), pl);
+    const lower = lowerGroundPlatform(argania2Mid, pl, MID_FLOOR_LEVEL)!;
+    const platforms = [lower, { polygon: platformPolygon(argania2Mid, pl), h: MID_FLOOR_LEVEL - argania2Mid.plinth }];
+    const ground = (X: number, Y: number) => carvedHeight(mid, ...at(X, Y), platforms);
+    const surveyed = (X: number, Y: number) => mid.dem.heightAt(...at(X, Y));
+    const off = (p: P2, e: number) => { const a = base.parcel[e], b = base.parcel[(e + 1) % base.parcel.length]; const q = closestOnSegment(p, a, b); return Math.hypot(p[0] - q[0], p[1] - q[1]); };
+
+    it('the same house; the garage door reaches 0.5 m lower and is 25 cm taller, with 3 equal risers to the entrance', () => {
+      expect(argania2Mid.outline).toEqual(argania2.outline);
+      expect(argania2Mid.roof).toBe(argania2.roof);
+      expect(argania2Mid.plinth).toBe(argania2.plinth);
+      const door = argania2Mid.openings.find((o) => o.kind === 'garage')!, cat = argania2.openings.find((o) => o.kind === 'garage')!;
+      expect([MID_GARAGE_DROP, MID_RISERS]).toEqual([0.5, 3]);
+      expect(door.sill).toBe(-MID_GARAGE_DROP);
+      expect(door.height).toBe(2.5);
+      expect(door.ref).toBe('brama 500/250');
+      // wall above the door, up to the catalogue's door head: 25 cm more than in the catalogue
+      expect(cat.sill + cat.height - (door.sill + door.height)).toBeCloseTo(0.25, 6);
+      expect(argania2Mid.walls.find((w) => w.id === door.wall)!.base).toBe(-MID_GARAGE_DROP);
+      const treads = argania2Mid.extras!.filter((e) => e.part === 'paving').map((e) => e.h1).sort((a, b) => b - a);
+      const levels = [-0.02, ...treads, argania2Mid.lowerGround!.top];
+      expect(levels).toHaveLength(MID_RISERS + 1);
+      for (let i = 1; i < levels.length; i++) expect(levels[i - 1] - levels[i]).toBeCloseTo(MID_GARAGE_DROP / MID_RISERS, 6);
+      // the lowered-garage variant is built by the same code and is unchanged
+      expect(argania2Low.openings.find((o) => o.kind === 'garage')!.height).toBe(cat.height);
+      expect(argania2Low.platform![0]).toEqual([-1, -1]);
+    });
+
+    it('starts 2.5 m along the back wall from the PZT spot: 7.7 m from the north-west boundary instead of 5.2 m, over 20 m left on the other side', () => {
+      expect(Math.hypot(pl.x - PZT.placement.x, pl.z - PZT.placement.z)).toBeCloseTo(MID_SHIFT, 2);
+      expect(pl.bearing).toBe(PZT.placement.bearing);
+      const nearest = (p: typeof pl, e: number) => Math.min(...footprintSite(argania2Mid, p).map((c) => off(c, e)));
+      expect(nearest(PZT.placement, 1)).toBeCloseTo(5.2, 1);
+      expect(nearest(pl, 1)).toBeCloseTo(7.7, 1);
+      expect(nearest(pl, 5)).toBeGreaterThan(20);
+      // front to back it stays where the PZT has it
+      expect(Math.abs(nearest(pl, 0) - nearest(PZT.placement, 0))).toBeLessThan(0.25);
+      useStore.getState().set({ projectId: 'ambrozja17', projectState: {}, placement: { x: 9, z: 9, bearing: 10, mirror: false }, floorLevel: 350 });
+      useStore.getState().setProject('argania2-mid');
+      expect(useStore.getState().placement).toEqual(MID_PLACEMENT);
+      expect(useStore.getState().floorLevel).toBe(MID_FLOOR_LEVEL);
+      expect(isPztPlacement(pl, MID_FLOOR_LEVEL)).toBe(false);
+    });
+
+    it('ground: the plot stays as surveyed (no bank at the road, no embankment at the east corner); only the house platform is level', () => {
+      expect(mid.slopes).toHaveLength(0);
+      expect(Array.from(mid.dem.data)).toEqual(Array.from(new Float32Array(base.surveyed!)));
+      // the PZT ground has 1.4 m of embankment at the east corner; here the ground there is the surveyed one
+      const e = base.parcel[0], cen = base.parcel.reduce((m, p) => [m[0] + p[0] / base.parcel.length, m[1] + p[1] / base.parcel.length], [0, 0]);
+      const inE: P2 = [e[0] + (cen[0] - e[0]) * 0.12, e[1] + (cen[1] - e[1]) * 0.12];
+      expect(base.dem.heightAt(inE[0], inE[1]) - mid.dem.heightAt(inE[0], inE[1])).toBeGreaterThan(0.8);
+      expect(carvedHeight(mid, inE[0], inE[1], platforms)).toBeCloseTo(mid.dem.heightAt(inE[0], inE[1]), 6);
+      // the floor is level with the surveyed ground at the back wall and 0.3–0.5 m below the road boundary
+      expect(Math.abs(surveyed(4, -0.3) - MID_FLOOR_LEVEL)).toBeLessThan(0.1);
+      expect(surveyed(4, -10.3) - MID_FLOOR_LEVEL).toBeGreaterThan(0.3);
+      expect(surveyed(4, -10.3) - MID_FLOOR_LEVEL).toBeLessThan(0.5);
+      // terrace and 2 m of lawn behind it are level, 5 cm under the floor; beyond, the lawn rises to the road as surveyed
+      for (const Y of [-1, -3.8, -5.5]) expect(ground(4, Y)).toBeCloseTo(MID_FLOOR_LEVEL - 0.05, 6);
+      expect(ground(4, -8)).toBeCloseTo(surveyed(4, -8), 6);
+      expect(surveyed(4, -6) - (MID_FLOOR_LEVEL - 0.05)).toBeLessThan(0.4); // the cut behind the terrace
+    });
+
+    it('forecourt: level for 1 m at the garage door, then about 11.5% down to the surveyed ground at its own gate', () => {
+      const G = MID_FLOOR_LEVEL - MID_GARAGE_DROP - 0.02;
+      expect(ground(10.8, 12.6)).toBeCloseTo(G, 6);
+      expect(ground(6.0, 13.2)).toBeCloseTo(G, 6); // foot of the stairs
+      expect(ground(10.8, 11.5)).toBeCloseTo(MID_FLOOR_LEVEL - 0.05, 6); // under the house
+      expect((ground(10.8, 15.0) - ground(10.8, 21.0)) / 6).toBeCloseTo(MID_DRIVE_FALL, 2);
+      expect(MID_FLAT).toBe(1);
+      expect(MID_DRIVE_FALL).toBeLessThan(0.12); // no steeper than on the PZT
+      const gate = lay.gates[0], a = mid.parcel[0], b = mid.parcel[1], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const d = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
+      for (const m of [gate.from, (gate.from + gate.to) / 2, gate.to]) {
+        const inside: P2 = [a[0] + d[0] * m + d[1] * 0.4, a[1] + d[1] * m - d[0] * 0.4], outside: P2 = [a[0] + d[0] * m - d[1] * 0.5, a[1] + d[1] * m + d[0] * 0.5];
+        expect(pointInPolygon(inside, lower.polygon)).toBe(true);
+        expect(Math.abs(carvedHeight(mid, inside[0], inside[1], platforms) - mid.dem.heightAt(outside[0], outside[1]))).toBeLessThan(0.1);
+      }
+    });
+
+    it('its own forecourt, gate and cars replace the PZT ones while it is shown; the other projects keep the PZT layout', () => {
+      const a = base.parcel[0], b = base.parcel[1], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const d = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
+      // the same drawn yard, moved with the house: its far corners 0.3 m inside the north-east boundary, 2.8 m from the north-west one
+      expect(lay.driveway.points).toHaveLength(PZT_DRIVEWAY.points.length);
+      expect(off(lay.driveway.points[5], 0)).toBeCloseTo(0.3, 1);
+      expect(off(lay.driveway.points[6], 0)).toBeCloseTo(0.3, 1);
+      expect(off(lay.driveway.points[7], 1)).toBeCloseTo(0.3 + MID_SHIFT, 1);
+      expect(lay.driveway.points.every((p) => pointInPolygon(p, base.parcel))).toBe(true);
+      // the lowered forecourt lies on that yard
+      for (const q of lower.polygon.slice(-5)) expect(lay.driveway.points.some((p) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 0.02)).toBe(true);
+      // the fence opens only at the gates; the sliding gate is centred on the garage door
+      const open = fenceOpenings(base.parcel, 0, [lay.driveway.points], lay.gates);
+      expect(open.map(([o, c, k]) => [Math.round((c - o) * 100) / 100, k])).toEqual([[1, 'wicket'], [4.5, 'sliding']]);
+      const doorMid = at(10.82, 22.0);
+      expect(Math.abs((open[1][0] + open[1][1]) / 2 - ((doorMid[0] - a[0]) * d[0] + (doorMid[1] - a[1]) * d[1]))).toBeLessThan(0.15);
+      const fp = footprintSite(argania2Mid, pl);
+      for (const c of lay.cars) {
+        expect(pointInPolygon([c.x, c.z], lay.driveway.points)).toBe(true);
+        expect(pointInPolygon([c.x, c.z], fp)).toBe(false);
+      }
+      // swapped in by id; the visitor's own items and the other projects are untouched
+      const garden = [PZT_DRIVEWAY, { id: 'mine', kind: 'patio' as const, points: [] }], cars = [...PZT_CARS, { id: 'c9', x: 5, z: 5, rot: 1, color: '#000' }];
+      expect(layoutGarden('argania2-mid', garden).map((g) => g.points)).toEqual([lay.driveway.points, []]);
+      expect(layoutCars('argania2-mid', cars).map((c) => c.x)).toEqual([lay.cars[0].x, lay.cars[1].x, 5]);
+      expect(layoutCars('argania2-mid', cars.slice(1)).map((c) => c.id)).toEqual(['pzt-car-2', 'c9']); // a removed car stays removed
+      expect(layoutGates('argania2-mid', PZT_GATES)).toEqual(lay.gates);
+      for (const id of ['argania2', 'argania2-low', 'ambrozja17']) {
+        expect(layoutGarden(id, garden)).toBe(garden);
+        expect(layoutCars(id, cars)).toBe(cars);
+        expect(layoutGates(id, PZT_GATES)).toBe(PZT_GATES);
+      }
+      // the access road reaches its gate
+      const [road, toGate] = accessRoads(base.parcel, roads, lay.gates);
+      expect(toGate.width).toBeCloseTo(4.5, 6);
+      expect(pointInPolygon(toGate.pts[1], base.parcel)).toBe(true);
+      expect((road.pts[0][0] - a[0]) * d[0] + (road.pts[0][1] - a[1]) * d[1]).toBeCloseTo(lay.gates[1].from - 1.5, 6);
     });
   });
 

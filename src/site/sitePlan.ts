@@ -12,7 +12,7 @@
 import { toSite, type P2, type Placement } from '../placement/geom2d';
 import { toLocal } from '../house/geometry';
 import { argania2 } from '../house/argania2';
-import { argania2Low } from '../house/argania2-low';
+import { argania2Low, argania2Mid } from '../house/argania2-low';
 import type { GroundDesign, Road } from '../geo/site';
 import type { Car, GardenArea } from '../store';
 
@@ -29,10 +29,24 @@ export const PZT: { projectId: string; placement: Placement; floorLevel: number;
  */
 export const LOW_FLOOR_LEVEL = 357.8;
 
+/**
+ * The compromise variant: the house floor 0.40 m above the PZT's — level with the surveyed ground
+ * at the back wall (357.3–357.4) and 0.4 m below the road behind — and the house 2.5 m further from
+ * the north-west boundary (7.7 m instead of 5.2 m at the garage corner), same bearing.
+ */
+export const MID_FLOOR_LEVEL = 357.4;
+export const MID_SHIFT = 2.5;
+const r2 = (v: number) => Math.round(v * 100) / 100;
+export const MID_PLACEMENT: Placement = (() => {
+  const c = toSite([-MID_SHIFT, 0], PZT.placement); // along the back wall, away from the garage side
+  return { ...PZT.placement, x: r2(c[0]), z: r2(c[1]) };
+})();
+
 /** where a project starts when it has never been placed (others start where the last house stood) */
 export const PROJECT_START: Record<string, { placement: Placement; floorLevel: number }> = {
   [PZT.projectId]: { placement: PZT.placement, floorLevel: PZT.floorLevel },
   [argania2Low.id]: { placement: PZT.placement, floorLevel: LOW_FLOOR_LEVEL },
+  [argania2Mid.id]: { placement: MID_PLACEMENT, floorLevel: MID_FLOOR_LEVEL },
 };
 
 /**
@@ -43,6 +57,9 @@ export const PROJECT_START: Record<string, { placement: Placement; floorLevel: n
  * falling to the surveyed ground at the north corner. What differs is what the variant is about:
  * the floor at 357.80, and every slope 2 m inside the boundary instead of 0.3–1.25 m, so there is a
  * strip of untouched ground along the fence. Widths ≈ 1.5 × the height of the slope.
+ * Compromise variant: no slopes at all. The plot keeps its surveyed ground, so there is no bank at
+ * the road and no embankment at the east corner; only the house platform (house, terrace and 2 m
+ * of lawn behind it) and the forecourt are shaped, each meeting the ground around it with a 1:2 bank.
  */
 export const GROUND_DESIGN: Record<string, GroundDesign> = {
   [argania2Low.id]: {
@@ -56,6 +73,7 @@ export const GROUND_DESIGN: Record<string, GroundDesign> = {
       { edge: 5, outer: 2, inner: [3, 5.3] }, // south-east: 0.6 m at the south corner to 2.2 m at the east corner
     ],
   },
+  [argania2Mid.id]: { level: MID_FLOOR_LEVEL - argania2Mid.plinth, slopes: [] },
 };
 
 /** is this placement / floor level the project's reference one (to the cm / 0.1°)? Default: the PZT's. */
@@ -77,10 +95,11 @@ export const isPztPlacement = (pl: Placement, floorLevel: number | null, ref: { 
 // The PZT draws no gate: the 4.5 m sliding gate (centred on the garage door) and the 1 m wicket
 // next to it are the user's, set into the fence on the north-east boundary.
 // ---------------------------------------------------------------------------------------------
-const fromPlan = ([X, Y]: P2): P2 => {
-  const p = toSite(toLocal(argania2, X, Y), PZT.placement);
-  return [Math.round(p[0] * 100) / 100, Math.round(p[1] * 100) / 100];
+const fromPlanAt = ([X, Y]: P2, pl: Placement): P2 => {
+  const p = toSite(toLocal(argania2, X, Y), pl);
+  return [r2(p[0]), r2(p[1])];
 };
+const fromPlan = (p: P2): P2 => fromPlanAt(p, PZT.placement);
 
 export const PZT_DRIVEWAY: GardenArea = {
   id: 'pzt-driveway',
@@ -103,14 +122,44 @@ export const PZT_GATES: Gate[] = [
 ];
 
 /** two cars parked nose-in in front of the garage door */
-export const PZT_CARS: Car[] = (() => {
-  const c0 = fromPlan([0, 0]), c1 = fromPlan([0, -1]); // plan −Y (towards the garage) in site coords
+const carsAt = (pl: Placement): Car[] => {
+  const c0 = fromPlanAt([0, 0], pl), c1 = fromPlanAt([0, -1], pl); // plan −Y (towards the garage) in site coords
   const rot = Math.round(Math.atan2(-(c1[1] - c0[1]), c1[0] - c0[0]) * 1000) / 1000;
   return [
-    { id: 'pzt-car-1', x: fromPlan([9.55, 15.4])[0], z: fromPlan([9.55, 15.4])[1], rot, color: '#2e3338' },
-    { id: 'pzt-car-2', x: fromPlan([12.1, 15.4])[0], z: fromPlan([12.1, 15.4])[1], rot, color: '#d8dbde' },
+    { id: 'pzt-car-1', x: fromPlanAt([9.55, 15.4], pl)[0], z: fromPlanAt([9.55, 15.4], pl)[1], rot, color: '#2e3338' },
+    { id: 'pzt-car-2', x: fromPlanAt([12.1, 15.4], pl)[0], z: fromPlanAt([12.1, 15.4], pl)[1], rot, color: '#d8dbde' },
   ];
-})();
+};
+export const PZT_CARS: Car[] = carsAt(PZT.placement);
+
+// ---------------------------------------------------------------------------------------------
+// A project that does not stand where the PZT puts the house has its own forecourt, gates and cars.
+// They replace the PZT ones (same ids) while that project is shown; everything else in the garden
+// is shared by all projects.
+// Compromise variant: the same drawn yard, 2.5 m further from the north-west boundary with the
+// house, which leaves a planting strip along that fence. Its two far corners are again 0.3 m inside
+// the north-east boundary, and the gate and wicket moved 2.49 m along the fence with the garage door.
+// ---------------------------------------------------------------------------------------------
+export interface SiteLayout { driveway: GardenArea; gates: Gate[]; cars: Car[] }
+
+const MID_YARD: P2[] = [[-0.85, 8.7], [-0.85, 9.9], [3.04, 9.9], [3.04, 19.88], [7.4, 19.88], [7.4, 22.34], [18.18, 21.54], [19.27, 12.4], [14.3, 12.4], [7.4, 12.4], [7.4, 8.7]];
+
+export const PROJECT_LAYOUT: Record<string, SiteLayout> = {
+  [argania2Mid.id]: {
+    driveway: { id: PZT_DRIVEWAY.id, kind: 'driveway', points: MID_YARD.map((p) => fromPlanAt(p, MID_PLACEMENT)) },
+    gates: [
+      { id: 'pzt-gate', edge: 0, from: 33.0, to: 37.5, kind: 'sliding' },
+      { id: 'pzt-wicket', edge: 0, from: 31.75, to: 32.75, kind: 'wicket' },
+    ],
+    cars: carsAt(MID_PLACEMENT),
+  },
+};
+
+const swap = <T extends { id: string }>(items: T[], own: T[] | undefined): T[] => (own ? items.map((i) => own.find((o) => o.id === i.id) ?? i) : items);
+/** the garden areas, cars and gates as laid out for a project (see PROJECT_LAYOUT) */
+export const layoutGarden = (projectId: string, garden: GardenArea[]) => swap(garden, PROJECT_LAYOUT[projectId] && [PROJECT_LAYOUT[projectId].driveway]);
+export const layoutCars = (projectId: string, cars: Car[]) => swap(cars, PROJECT_LAYOUT[projectId]?.cars);
+export const layoutGates = (projectId: string, gates: Gate[]) => swap(gates, PROJECT_LAYOUT[projectId]?.gates);
 
 /** fence along every edge of plot 664/2 */
 export const PZT_FENCE_EDGES = [0, 1, 2, 3, 4, 5];

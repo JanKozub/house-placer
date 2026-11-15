@@ -5,7 +5,7 @@ import type { Site } from '../geo/site';
 import { closestOnSegment, pointInPolygon, type P2 } from '../placement/geom2d';
 import { makeDetailTexture, makeFallbackBase, matchImagery, paintBase, paintOverlay, type OverlaySpec } from './groundPaint';
 import { ringImage } from './Landscape';
-import { useStore } from '../store';
+import { useGarden, useStore } from '../store';
 
 export interface PlatformSpec {
   polygon: P2[];
@@ -65,7 +65,7 @@ export function overlaySpec(site: Site): OverlaySpec {
 }
 
 export function Terrain({ site, platforms }: { site: Site; platforms: PlatformSpec[] }) {
-  const garden = useStore((s) => s.garden);
+  const garden = useGarden();
   const lawn = useStore((s) => s.layers.parcelLawn);
   const useOrtho = useStore((s) => s.layers.ortho);
   const showRoads = useStore((s) => s.layers.roads !== false);

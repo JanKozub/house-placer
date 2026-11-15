@@ -240,11 +240,13 @@ export function PlacementPanel() {
               title={
                 house.id === PZT.projectId
                   ? `Położenie i poziom ±0,00 = ${f(PZT.floorLevel)} m n.p.m. z ${PZT.source}`
-                  : `Położenie z ${PZT.source}, poziom ±0,00 = ${f(PROJECT_START[house.id].floorLevel)} m n.p.m. tego wariantu`
+                  : PROJECT_START[house.id].placement === PZT.placement
+                    ? `Położenie z ${PZT.source}, poziom ±0,00 = ${f(PROJECT_START[house.id].floorLevel)} m n.p.m. tego wariantu`
+                    : `Położenie i poziom ±0,00 = ${f(PROJECT_START[house.id].floorLevel)} m n.p.m. tego wariantu`
               }
               onClick={() => set({ placement: { ...PROJECT_START[house.id].placement }, floorLevel: PROJECT_START[house.id].floorLevel })}
             >
-              Ustaw wg PZT
+              {PROJECT_START[house.id].placement === PZT.placement ? 'Ustaw wg PZT' : 'Ustaw wg wariantu'}
             </button>
           )}
         </div>

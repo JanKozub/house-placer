@@ -6,7 +6,7 @@ import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 import type { Site } from '../geo/site';
-import { useStore, type Car } from '../store';
+import { useCars, useStore, type Car } from '../store';
 import { carvedHeight, type PlatformSpec } from './Terrain';
 
 const L = 4.6, W = 1.82;
@@ -71,7 +71,7 @@ function CarModel({ car, site, platforms, geo, mats }: { car: Car; site: Site; p
 }
 
 export function Cars({ site, platforms }: { site: Site; platforms: PlatformSpec[] }) {
-  const cars = useStore((s) => s.cars);
+  const cars = useCars();
   const invalidate = useThree((s) => s.invalidate);
   const geo = useMemo(makeGeometries, []);
   const mats = useMemo(

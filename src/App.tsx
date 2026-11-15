@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { loadSite, withGround, type Site } from './geo/site';
-import { accessRoads, GROUND_DESIGN } from './site/sitePlan';
+import { accessRoads, GROUND_DESIGN, PROJECT_LAYOUT } from './site/sitePlan';
 import { DerivedProvider, SiteContext } from './derived';
 import { useStore } from './store';
 import { centroid } from './placement/geom2d';
@@ -37,7 +37,13 @@ export function App() {
   }, [house, site]);
 
   // a project with its own levels gets its own design ground
-  const projectSite = useMemo(() => (site ? withGround(site, GROUND_DESIGN[house.id]) : null), [site, house.id]);
+  const projectSite = useMemo(() => {
+    if (!site) return null;
+    const s = withGround(site, GROUND_DESIGN[house.id]);
+    // a project with its own gate has the access road end there
+    const own = PROJECT_LAYOUT[house.id];
+    return own ? { ...s, access: accessRoads(s.parcel, s.roads, own.gates) } : s;
+  }, [site, house.id]);
 
   if (err) return <div className="splash">Nie udało się wczytać danych działki: {err}<br />Uruchom <code>npm run fetch-site</code>.</div>;
   if (!site || !projectSite) return <div className="splash">Wczytywanie działki 664/2…</div>;

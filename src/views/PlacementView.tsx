@@ -5,7 +5,7 @@ import { Line, MapControls, OrthographicCamera } from '@react-three/drei';
 import { LabelContext, LabelOverlay, LabelProjector, LabelRegistry, WorldLabel } from './labels';
 import { create } from 'zustand';
 import { useDerived, useSite } from '../derived';
-import { uid, useStore, type GardenKind, type Tool, type TreeKind } from '../store';
+import { uid, useCars, useGarden, useStore, type GardenKind, type Tool, type TreeKind } from '../store';
 import { houseById, useHouse } from '../house/projects';
 import { buildingDef, buildingPlacement, setBuildingPlacement, useTarget } from '../house/annex';
 import type { HouseDef } from '../house/types';
@@ -15,7 +15,7 @@ import { f } from '../ui/format';
 import { Attribution } from '../ui/Attribution';
 import { cornerLabel } from '../placement/setbacks';
 import { CAR_SIZE } from '../site/Cars';
-import { PZT_CARS } from '../site/sitePlan';
+import { layoutCars, layoutGarden, PZT_CARS } from '../site/sitePlan';
 
 const OVER = 200; // overlay height (scene units) — drawn without depth test
 const FIXED_SUN = new THREE.Vector3(-0.35, 0.85, 0.4).normalize();
@@ -300,9 +300,9 @@ function SiteOverlay() {
 }
 
 function GardenOverlay({ draft, cursor }: { draft: P2[]; cursor: P2 | null }) {
-  const garden = useStore((s) => s.garden);
+  const garden = useGarden();
   const trees = useStore((s) => s.trees);
-  const cars = useStore((s) => s.cars);
+  const cars = useCars();
   const selected = useStore((s) => s.selected);
   const bl = useStore((s) => s.buildingLine);
   const tool = useStore((s) => s.tool);
@@ -432,11 +432,11 @@ function Interaction({ draft, setDraft, setCursor }: { draft: P2[]; setDraft: (d
       // select garden item
       const tree = s.trees.find((t) => Math.hypot(t.x - p[0], t.z - p[1]) < Math.max(0.8, t.height * 0.3));
       // a car: inside its footprint (front = local +x)
-      const car = s.cars.find((c) => {
+      const car = layoutCars(s.projectId, s.cars).find((c) => {
         const dx = p[0] - c.x, dz = p[1] - c.z, co = Math.cos(c.rot), si = Math.sin(c.rot);
         return Math.abs(dx * co - dz * si) < CAR_SIZE.length / 2 && Math.abs(dx * si + dz * co) < CAR_SIZE.width / 2;
       });
-      const area = [...s.garden].reverse().find((g) => pointInPolygon(p, g.points));
+      const area = [...layoutGarden(s.projectId, s.garden)].reverse().find((g) => pointInPolygon(p, g.points));
       st.setState({ selected: car?.id ?? tree?.id ?? area?.id ?? null });
       return;
     }

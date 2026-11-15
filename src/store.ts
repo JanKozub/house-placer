@@ -1,7 +1,8 @@
+import { useMemo } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { P2, Placement } from './placement/geom2d';
-import { PROJECT_START, PZT, PZT_CARS, PZT_DRIVEWAY, PZT_FENCE_EDGES, PZT_GATES, type Gate } from './site/sitePlan';
+import { layoutCars, layoutGarden, layoutGates, PROJECT_START, PZT, PZT_CARS, PZT_DRIVEWAY, PZT_FENCE_EDGES, PZT_GATES, type Gate } from './site/sitePlan';
 
 export type GardenKind = 'driveway' | 'path' | 'patio' | 'flowerbed' | 'gravel';
 export interface GardenArea { id: string; kind: GardenKind; points: P2[] }
@@ -242,5 +243,20 @@ export const useStore = create<AppState>()(
     },
   ),
 );
+
+// The garden areas, cars and gates as shown for the active project: a project that stands elsewhere
+// than the PZT house has its own forecourt, gates and cars (PROJECT_LAYOUT in src/site/sitePlan.ts).
+export const useGarden = (): GardenArea[] => {
+  const garden = useStore((s) => s.garden), id = useStore((s) => s.projectId);
+  return useMemo(() => layoutGarden(id, garden), [id, garden]);
+};
+export const useCars = (): Car[] => {
+  const cars = useStore((s) => s.cars), id = useStore((s) => s.projectId);
+  return useMemo(() => layoutCars(id, cars), [id, cars]);
+};
+export const useGates = (): Gate[] => {
+  const gates = useStore((s) => s.gates), id = useStore((s) => s.projectId);
+  return useMemo(() => layoutGates(id, gates), [id, gates]);
+};
 
 export const PERSIST_KEYS = ['projectId', 'projectState', 'placement', 'floorLevel', 'annexes', 'outbuildings', 'sun', 'palette', 'garden', 'trees', 'cars', 'gates', 'fenceEdges', 'fenceHeight', 'buildingLine', 'layers'] as const;

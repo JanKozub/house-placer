@@ -7,10 +7,10 @@ import { ambrozja17 } from './ambrozja17';
 import { grela } from './grela';
 import { ambrozja17Detached } from './ambrozja17-detached';
 import { argania2 } from './argania2';
-import { argania2Low } from './argania2-low';
+import { argania2Low, argania2Mid } from './argania2-low';
 import type { HouseDef } from './types';
 
-export const HOUSE_LIST: HouseDef[] = [ambrozja17, ambrozja17Detached, grela, argania2, argania2Low];
+export const HOUSE_LIST: HouseDef[] = [ambrozja17, ambrozja17Detached, grela, argania2, argania2Low, argania2Mid];
 export const HOUSES: Record<string, HouseDef> = Object.fromEntries(HOUSE_LIST.map((h) => [h.id, h]));
 export const DEFAULT_HOUSE_ID = argania2.id;
 

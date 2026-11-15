@@ -57,7 +57,7 @@ If no imagery is available, the ground falls back to a synthetic field texture.
 2. Add it to `HOUSE_LIST` in `src/house/projects.ts`.
    A project can have separate buildings (a detached garage): list them in `annexes`, each a full `HouseDef` in its own plan coordinates with a `defaultAt` spot in the house's plan. Every annex gets its own placement, platform and floor level, is dragged and rotated on its own in the plan view (the "Dom | Garaż" switch picks which one the inputs and Q/E act on), and is included in the setback, corner and gap checks.
    Houses with a usable attic or a richer façade can also use: `Opening.level` (the storey an opening serves, e.g. attic windows; sets the eye height of views) and `Opening.shape: 'gable'` (glazing that follows the roof slopes), openings above the wall top inside that wall's gable, `upperFloor` (attic slab with voids), `upperRooms`, `roofWindows`, `facadeZones` (dark render band / wood cladding, cut around openings; colour "Tynk – pas ciemny") and `extras` (boxes for pergolas, canopies, posts).
-   A split-level house (garage on a lower floor) can also use: `WallEdge.base` (a wall that reaches below ±0.00, so its openings can too), `lowerGround` (ground beside the house that lies lower than the building platform, optionally falling away as a drive, with a `hardEdge` where it steps down vertically), `platform` and `apron` (their outlines when the defaults don't fit). See `src/house/argania2-low.ts`.
+   A split-level house (garage on a lower floor) can also use: `WallEdge.base` (a wall that reaches below ±0.00, so its openings can too), `lowerGround` (ground beside the house that lies lower than the building platform, optionally falling away as a drive, with a `hardEdge` where it steps down vertically), `platform` and `apron` (their outlines when the defaults don't fit). See `src/house/argania2-low.ts`. A project that starts somewhere else than the PZT house can have its own start position (`PROJECT_START`), ground (`GROUND_DESIGN`) and forecourt, gates and cars (`PROJECT_LAYOUT`), all in `src/site/sitePlan.ts`.
 3. Run `npm test`. The generic checks run on every project: outline and walls agree, openings fit their walls, roof faces tile the roof outline without steps, and the ridge height matches the section.
 
 ## Default position (PZT)
@@ -79,6 +79,20 @@ So the plot is not a flat table. The back and the sides are level, and the front
 Like for like: on the PZT the drive falls 1.04 m from the garage (357.00) to the gate, roughly 12%. In the variant it is level for 2.4 m and then falls 0.37 m, about 5%. With the garage only 1.00 m below the floor (356.80) the variant's drive came out at 11%, hardly gentler, which is why it is 1.50 m. The price is nine steps to the entrance, retaining walls up to 1.5 m beside the forecourt, and about 780 m³ of fill for the raised garden, against about 220 m³ of cut and 330 m³ of fill on the PZT.
 
 Every project shows the planned access road to the gate: gravel, along the outside of the north-east boundary and on past the north corner to the asphalt road (`accessRoads` in `src/site/sitePlan.ts`). It is not on the PZT or in OpenStreetMap, so it stays visible when the OpenStreetMap roads are switched off. It lies on the ground as surveyed.
+
+## Compromise variant
+
+"Dom w Arganiach 2 (kompromis)" sits half-way between the two (`argania2Mid` in `src/house/argania2-low.ts`, built by the same code as the lowered-garage variant). It answers four objections at once: the house too close to the north-west neighbour, the garden cut below the road, the tall embankment at the east corner, and a garage 1.5 m below the entrance.
+
+- Floor at 357.40, which is 0.40 m above the PZT's. That is level with the surveyed ground at the back wall (357.3–357.4) and about 0.4 m below the road boundary. The PZT floor is about 0.3 m below that ground.
+- Garage floor 0.50 m lower (356.90, about the PZT's forecourt level), so three steps lead up to the entrance. The garage door is 500/250 instead of 500/225, which leaves 25 cm more wall above it than in the catalogue.
+- The drive is level for 1 m at the door and then falls 11.5% to the surveyed ground at the gate, about as steep as on the PZT.
+- The house starts 2.5 m further from the north-west boundary: 7.7 m at the garage corner instead of 5.2 m, with over 20 m left on the other side. Front to back it stays where the PZT has it. "Ustaw wg wariantu" puts it back there.
+- The plot is not levelled (`GROUND_DESIGN` with no slopes): it keeps the surveyed ground, so there is no bank at the road and no embankment at the east corner. Only the house, the terrace and 2 m of lawn behind it stand on a level platform, which cuts about 0.3 m into the lawn rising to the road. Earthworks come to about 15 m³ of cut and 115 m³ of fill, including the forecourt.
+
+Because the house stands elsewhere, this project has its own forecourt, gate, wicket and parked cars (`PROJECT_LAYOUT` in `src/site/sitePlan.ts`). They replace the PZT ones, by id, while the project is shown; the rest of the garden is shared as before. The forecourt is the same drawn yard moved with the house, which leaves a 2.5 m planting strip along the north-west fence, and the access road ends at the moved gate.
+
+Not modelled: the drain or shallow swale that the ground behind the terrace needs, since the lawn there falls towards the house. The levels are assumptions for the architect, as in the other variant.
 
 ## Extra buildings
 
