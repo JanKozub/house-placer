@@ -12,7 +12,7 @@ import { driveSlope } from './site/drive';
 import { CAR_SIZE, CAR_STYLES } from './site/Cars';
 import { argania2 } from './house/argania2';
 import { accessRoads, DEFAULT_PROJECT, DEFAULT_SHED, FRONT, GARAGE_CARS, GROUND_DESIGN, layoutTrees, MID_DRIVE, midDriveLeft, midFenceLine, HEDGE, HEDGE_EDGES, isPztPlacement, layoutCars, layoutGarden, layoutGates, LOW_FLOOR_LEVEL, MID_FLOOR_LEVEL, PLOT, PROJECT_LAYOUT, PROJECT_START, PZT, PZT_CARS, PZT_DRIVEWAY, PZT_GATES, SHED_DRIVE, SHED_FLOOR_LEVEL, THUJA_HEDGE } from './site/sitePlan';
-import { argania2Low, argania2Mid, argania2MidRect, DRIVE_FALL, GARAGE_DROP, MID_DRIVE_FALL, MID_FLAT, MID_GARAGE_DROP, MID_RISERS, RISERS } from './house/argania2-low';
+import { argania2Low, argania2Mid, argania2MidRaised, argania2MidRect, BLOCK, DRIVE_FALL, GARAGE_DROP, MID_DRIVE_FALL, MID_FLAT, MID_GARAGE_DROP, MID_RISERS, RAISED_RISERS, RISERS } from './house/argania2-low';
 import { lowerGroundPlatform, platformPolygon } from './derived';
 import { fenceOpenings, isBigTree, plantGeometry } from './site/Garden';
 import { buildFeatures, KERB, kerbPieces, RAISED_BED, SEAT_WALL } from './site/GardenFeatures';
@@ -1416,6 +1416,56 @@ describe('site data (public/site)', () => {
       expect(layoutTrees(rect.id, front as never)).toEqual(front);
       expect(layoutCars(rect.id, PZT_CARS)).toEqual(layoutCars(argania2Mid.id, PZT_CARS));
       expect(DEFAULT_PROJECT).toBe(argania2Mid.id);
+    });
+
+    it('ground floor one block higher: everything above the ceiling is 25 cm up, the ground floor and the plan are the same', () => {
+      const hi = argania2MidRaised, lo = argania2Mid;
+      expect(BLOCK).toBe(0.25);
+      const up = (a: number, b: number) => expect(b - a).toBeCloseTo(BLOCK, 9);
+      up(lo.ceilingHeight, hi.ceilingHeight);
+      up(lo.wallTop, hi.wallTop);
+      up(lo.heightTotal, hi.heightTotal);
+      up(lo.upperFloor!.level, hi.upperFloor!.level);
+      up(lo.interior!.upper!.level, hi.interior!.upper!.level);
+      up(lo.interior!.ground.height, hi.interior!.ground.height);
+      for (const k of ['ridgeTop', 'topAtWall', 'soffit'] as const) up(lo.roof[k], hi.roof[k]);
+      lo.roof.volumes.forEach((v, i) => up(v.edgeTop, hi.roof.volumes[i].edgeTop));
+      lo.roof.chimneys.forEach((c, i) => up(c.top, hi.roof.chimneys[i].top));
+      lo.roof.gables.forEach((g, i) => up(g.base, hi.roof.gables[i].base));
+      up(roofTopAt(lo, 3, 4.35)!, roofTopAt(hi, 3, 4.35)!);
+      // attic windows (and the glazed gable) go up with the attic; ground-floor openings stay
+      lo.openings.forEach((o, i) => {
+        const n = hi.openings[i];
+        if ((o.level ?? 0) > 0) { up(o.sill, n.sill); up(o.level!, n.level!); expect(n.height).toBe(o.height); } else expect(n).toEqual(o);
+      });
+      expect([hi.outline, hi.walls, hi.rooms, hi.extras, hi.paving, hi.lowerGround]).toEqual([lo.outline, lo.walls, lo.rooms, lo.extras, lo.paving, lo.lowerGround]);
+      expect(hi.views.bedroom.h - lo.views.bedroom.h).toBeCloseTo(BLOCK, 9);
+      expect(hi.views.living).toEqual(lo.views.living);
+      // stairs: 18 equal risers under 19 cm, comfortable, the first flight as long as before
+      const [f1, f2, ...rest] = hi.interior!.stairs!.flights, land = hi.interior!.stairs!.landings[0], uf = hi.upperFloor!;
+      expect(rest).toEqual(lo.interior!.stairs!.flights.slice(2));
+      expect(f1.rise).toBeCloseTo(uf.level / RAISED_RISERS, 9);
+      expect(f1.rise).toBeLessThan(0.19);
+      expect(f2.rise).toBe(f1.rise);
+      expect(f1.treads + 1 + f2.treads + 1).toBe(RAISED_RISERS);
+      expect((f1.treads + 1) * f1.rise).toBeCloseTo(land.level, 9);
+      expect(land.level + (f2.treads + 1) * f2.rise).toBeCloseTo(uf.level, 9);
+      expect(2 * f1.rise + f1.going).toBeGreaterThan(0.6);
+      expect(2 * f1.rise + f1.going).toBeLessThan(0.65);
+      const lf1 = lo.interior!.stairs!.flights[0];
+      expect(f1.treads * f1.going).toBeCloseTo(lf1.treads * lf1.going, 9);
+      expect(land.level - 0.2).toBeGreaterThan(2.0);
+      const end = f2.from[1] + f2.treads * f2.going;
+      expect(uf.voids![1].some((p) => Math.abs(p[1] - end) < 1e-9)).toBe(true);
+      expect(uf.voids![0]).toEqual(lo.upperFloor!.voids![0]);
+      // the render band and the cladding end at the storey line, 25 cm higher; the garage-door band stays
+      lo.facadeZones!.forEach((z, i) => expect(hi.facadeZones![i].h1 - z.h1).toBeCloseTo(z.h1 > 2.5 ? BLOCK : 0, 9));
+      expect(buildHouse(hi).glass!.attributes.position.count).toBeGreaterThan(0);
+      // a version of the compromise: same site, not the default
+      expect(PROJECT_START[hi.id]).toEqual(PROJECT_START[lo.id]);
+      expect(GROUND_DESIGN[hi.id]).toBe(GROUND_DESIGN[lo.id]);
+      expect(PROJECT_LAYOUT[hi.id]).toBe(PROJECT_LAYOUT[lo.id]);
+      expect(DEFAULT_PROJECT).toBe(lo.id);
     });
 
     it('stands exactly where the PZT draws the house, like every variant of Dom w Arganiach: 5.2 m from the north-west boundary, 10.9 m from the road behind', () => {

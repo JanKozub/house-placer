@@ -12,7 +12,7 @@
 import { toSite, type P2, type Placement } from '../placement/geom2d';
 import { toLocal } from '../house/geometry';
 import { argania2 } from '../house/argania2';
-import { argania2Low, argania2Mid, argania2MidRect } from '../house/argania2-low';
+import { argania2Low, argania2Mid, argania2MidRaised, argania2MidRect } from '../house/argania2-low';
 import { wiataGaraz } from '../house/outbuildings';
 import type { GroundDesign, Road } from '../geo/site';
 import type { Car, GardenArea, Outbuilding, Tree } from '../store';
@@ -38,7 +38,7 @@ export const LOW_FLOOR_LEVEL = 357.8;
  */
 export const MID_FLOOR_LEVEL = 357.4;
 /** the compromise and its versions that differ only in the house itself: they share its level, ground, forecourt and entrance */
-const COMPROMISE = [argania2Mid.id, argania2MidRect.id];
+const COMPROMISE = [argania2Mid.id, argania2MidRect.id, argania2MidRaised.id];
 const r2 = (v: number) => Math.round(v * 100) / 100;
 /**
  * The frame the shared garden was drawn in: parallel to the house, 2.5 m along its back wall from

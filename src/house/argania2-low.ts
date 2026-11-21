@@ -195,3 +195,73 @@ export const argania2MidRect: HouseDef = {
     op.shape === 'gable' ? { wall: op.wall, at: op.at, width: 3.0, height: 2.2, sill: op.level!, kind: 'window', panes: 3, ref: '300/220', level: op.level } : op,
   ),
 };
+
+/** one course of the walls: Porotherm 25 blocks are 23.8 cm high, 25 cm with the joint */
+export const BLOCK = 0.25;
+/** the main stairs of the raised house: 18 equal risers, 13 up to the landing and 5 to the attic */
+export const RAISED_RISERS = 18;
+const RAISED_TO_LANDING = 13;
+
+/**
+ * The house with the ground-floor ceiling `dh` higher (one course of blocks, the user's request,
+ * 2026-11-21), so everything above it stands that much higher: the attic floor with its rooms and
+ * windows, the top of the walls, the roof with its eaves and gables, and the chimneys. The ground
+ * floor's windows and doors keep their catalogue sizes (25 cm more wall above them), and the
+ * pergola and the entrance canopy stay where they were; the dark render and the wood cladding,
+ * which end at the storey line, go up with it. The stairs get two more risers (16 → 18, each
+ * under 19 cm): the first flight keeps its length with one more, shorter tread, the second gains
+ * one tread, and the stairwell opening grows with it.
+ */
+function raiseCeiling(h: HouseDef, dh: number, id: string, name: string): HouseDef {
+  const up = (v: number) => v + dh;
+  const r = h.roof, uf = h.upperFloor!, from = h.interior!;
+  const storeyLine = h.ceilingHeight;
+
+  // stairs: same first-flight run, 13 + 5 risers over the new floor-to-floor height
+  const [f1, f2, ...rest] = from.stairs!.flights;
+  const land = from.stairs!.landings[0];
+  const rise = up(uf.level) / RAISED_RISERS;
+  const going = (f1.treads * f1.going) / (RAISED_TO_LANDING - 1);
+  const landing = RAISED_TO_LANDING * rise;
+  const top = { ...f2, treads: RAISED_RISERS - RAISED_TO_LANDING - 1, going, rise, startLevel: landing };
+  const oldEnd = f2.from[1] + f2.treads * f2.going, newEnd = top.from[1] + top.treads * going;
+
+  return {
+    ...h,
+    id,
+    name,
+    heightTotal: Math.round(up(h.heightTotal) * 100) / 100,
+    ceilingHeight: up(h.ceilingHeight),
+    wallTop: up(h.wallTop),
+    walls: h.walls.map((w) => (w.top !== undefined ? { ...w, top: up(w.top) } : w)),
+    roof: {
+      ...r,
+      ridgeTop: up(r.ridgeTop),
+      topAtWall: up(r.topAtWall),
+      soffit: up(r.soffit),
+      volumes: r.volumes.map((v) => ({ ...v, edgeTop: up(v.edgeTop) })),
+      chimneys: r.chimneys.map((c) => ({ ...c, top: up(c.top) })),
+      gables: r.gables.map((g) => ({ ...g, base: up(g.base) })),
+    },
+    openings: h.openings.map((o) => ((o.level ?? 0) > 0 ? { ...o, sill: up(o.sill), level: up(o.level!) } : o)),
+    facadeZones: h.facadeZones?.map((z) => (z.h1 >= storeyLine ? { ...z, h1: up(z.h1) } : z)),
+    upperFloor: {
+      ...uf,
+      level: up(uf.level),
+      voids: uf.voids?.map((v) => v.map(([X, Y]): Vec2 => [X, Math.abs(Y - oldEnd) < 1e-9 ? newEnd : Y])),
+    },
+    interior: {
+      ...from,
+      ground: { ...from.ground, height: up(from.ground.height) },
+      upper: { ...from.upper!, level: up(from.upper!.level) },
+      stairs: {
+        flights: [{ ...f1, treads: RAISED_TO_LANDING - 1, going, rise }, top, ...rest],
+        landings: [{ ...land, level: landing }, ...from.stairs!.landings.slice(1)],
+      },
+    },
+    views: Object.fromEntries(Object.entries(h.views).map(([k, v]) => [k, v.h > storeyLine ? { ...v, h: up(v.h) } : v])) as HouseDef['views'],
+  };
+}
+
+/** the compromise with the ground-floor ceiling one block higher, so the whole house is 25 cm taller */
+export const argania2MidRaised: HouseDef = raiseCeiling(argania2Mid, BLOCK, 'argania2-mid-raised', 'Dom w Arganiach 2 (kompromis, parter +25 cm)');
