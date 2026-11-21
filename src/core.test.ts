@@ -12,7 +12,7 @@ import { driveSlope } from './site/drive';
 import { CAR_SIZE, CAR_STYLES } from './site/Cars';
 import { argania2 } from './house/argania2';
 import { accessRoads, DEFAULT_PROJECT, DEFAULT_SHED, FRONT, GARAGE_CARS, GROUND_DESIGN, layoutTrees, MID_DRIVE, midDriveLeft, midFenceLine, HEDGE, HEDGE_EDGES, isPztPlacement, layoutCars, layoutGarden, layoutGates, LOW_FLOOR_LEVEL, MID_FLOOR_LEVEL, PLOT, PROJECT_LAYOUT, PROJECT_START, PZT, PZT_CARS, PZT_DRIVEWAY, PZT_GATES, SHED_DRIVE, SHED_FLOOR_LEVEL, THUJA_HEDGE } from './site/sitePlan';
-import { argania2Low, argania2Mid, argania2MidRaised, argania2MidRect, BLOCK, DRIVE_FALL, GARAGE_DROP, MID_DRIVE_FALL, MID_FLAT, MID_GARAGE_DROP, MID_RISERS, RAISED_RISERS, RISERS } from './house/argania2-low';
+import { argania2Low, argania2Mid, argania2MidRaised, argania2MidRect, BLOCK, DOOR_HEADROOM, DRIVE_FALL, GARAGE_DROP, MID_DRIVE_FALL, MID_FLAT, MID_GARAGE_DROP, MID_RISERS, RAISED_DOOR_HEIGHT, RAISED_RISERS, RISERS } from './house/argania2-low';
 import { lowerGroundPlatform, platformPolygon } from './derived';
 import { fenceOpenings, isBigTree, plantGeometry } from './site/Garden';
 import { buildFeatures, KERB, kerbPieces, RAISED_BED, SEAT_WALL } from './site/GardenFeatures';
@@ -1433,10 +1433,10 @@ describe('site data (public/site)', () => {
       lo.roof.chimneys.forEach((c, i) => up(c.top, hi.roof.chimneys[i].top));
       lo.roof.gables.forEach((g, i) => up(g.base, hi.roof.gables[i].base));
       up(roofTopAt(lo, 3, 4.35)!, roofTopAt(hi, 3, 4.35)!);
-      // attic windows (and the glazed gable) go up with the attic; ground-floor openings stay
+      // attic windows (and the glazed gable) go up with the attic; ground-floor openings stay, except the garage door (below)
       lo.openings.forEach((o, i) => {
         const n = hi.openings[i];
-        if ((o.level ?? 0) > 0) { up(o.sill, n.sill); up(o.level!, n.level!); expect(n.height).toBe(o.height); } else expect(n).toEqual(o);
+        if ((o.level ?? 0) > 0) { up(o.sill, n.sill); up(o.level!, n.level!); expect(n.height).toBe(o.height); } else if (o.kind !== 'garage') expect(n).toEqual(o);
       });
       expect([hi.outline, hi.walls, hi.rooms, hi.extras, hi.paving, hi.lowerGround]).toEqual([lo.outline, lo.walls, lo.rooms, lo.extras, lo.paving, lo.lowerGround]);
       expect(hi.views.bedroom.h - lo.views.bedroom.h).toBeCloseTo(BLOCK, 9);
@@ -1458,8 +1458,19 @@ describe('site data (public/site)', () => {
       const end = f2.from[1] + f2.treads * f2.going;
       expect(uf.voids![1].some((p) => Math.abs(p[1] - end) < 1e-9)).toBe(true);
       expect(uf.voids![0]).toEqual(lo.upperFloor!.voids![0]);
-      // the render band and the cladding end at the storey line, 25 cm higher; the garage-door band stays
-      lo.facadeZones!.forEach((z, i) => expect(hi.facadeZones![i].h1 - z.h1).toBeCloseTo(z.h1 > 2.5 ? BLOCK : 0, 9));
+      // the render band and the cladding end at the storey line, 25 cm higher
+      lo.facadeZones!.forEach((z, i) => { if (z.h1 > 2.5) expect(hi.facadeZones![i].h1 - z.h1).toBeCloseTo(BLOCK, 9); });
+      // the tallest residential sectional door, with room to spare for its track and operator
+      const door = hi.openings.find((o) => o.kind === 'garage')!, was = lo.openings.find((o) => o.kind === 'garage')!;
+      expect([door.wall, door.at, door.width, door.sill]).toEqual([was.wall, was.at, was.width, was.sill]);
+      expect([door.height, door.ref]).toEqual([RAISED_DOOR_HEIGHT, 'brama 500/300']);
+      const room = hi.ceilingHeight - (door.sill + door.height);
+      expect(room).toBeCloseTo(0.43, 9);
+      expect(room).toBeGreaterThanOrEqual(2 * DOOR_HEADROOM);
+      expect(room - BLOCK).toBeLessThan(DOOR_HEADROOM); // a 3.25 m door would not fit
+      expect(hi.facadeZones!.find((z) => z.wall === door.wall)!.h1).toBeCloseTo(door.sill + door.height, 9);
+      // opened, the door lies under the ceiling over the cars, clear of the back wall's cupboards
+      expect(hi.depth - hi.wallThickness - (door.height + 0.5)).toBeGreaterThan(6.24 + 0.52);
       expect(buildHouse(hi).glass!.attributes.position.count).toBeGreaterThan(0);
       // a version of the compromise: same site, not the default
       expect(PROJECT_START[hi.id]).toEqual(PROJECT_START[lo.id]);

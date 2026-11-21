@@ -263,5 +263,28 @@ function raiseCeiling(h: HouseDef, dh: number, id: string, name: string): HouseD
   };
 }
 
-/** the compromise with the ground-floor ceiling one block higher, so the whole house is 25 cm taller */
-export const argania2MidRaised: HouseDef = raiseCeiling(argania2Mid, BLOCK, 'argania2-mid-raised', 'Dom w Arganiach 2 (kompromis, parter +25 cm)');
+/** headroom a sectional door's standard (N) track needs between the top of the opening and the ceiling (Hörmann; low-headroom tracks need 0.115 m) */
+export const DOOR_HEADROOM = 0.21;
+/**
+ * Garage door of the raised compromise (the user's request, 2026-11-21: as high as possible, with
+ * room left to mount it and open it normally): 500/300, the tallest size of residential sectional
+ * doors (Hörmann, Wiśniowski: up to 3.00 m). Its top is at +2.50, 0.43 m under the garage ceiling,
+ * twice what a standard track needs, so the track and the operator fit with room to spare. The
+ * opened door lies under the ceiling about 3.5 m into the 6 m deep garage (the operator rail about
+ * 4.1 m), above the cupboards and shelves. The garage itself would take 3.22 m; above 3.00 m it is
+ * an industrial door. 0.57 m of wall is left above the opening for the lintel under the attic slab.
+ */
+export const RAISED_DOOR_HEIGHT = 3.0;
+
+/** the compromise with the ground-floor ceiling one block higher, so the whole house is 25 cm taller, and the tallest garage door that fits */
+export const argania2MidRaised: HouseDef = (() => {
+  const h = raiseCeiling(argania2Mid, BLOCK, 'argania2-mid-raised', 'Dom w Arganiach 2 (kompromis, parter +25 cm)');
+  const door = h.openings.find((o) => o.kind === 'garage')!;
+  const top = door.sill + RAISED_DOOR_HEIGHT;
+  return {
+    ...h,
+    openings: h.openings.map((o) => (o === door ? { ...o, height: RAISED_DOOR_HEIGHT, ref: `brama ${o.width * 100}/${RAISED_DOOR_HEIGHT * 100}` } : o)),
+    // the dark render on the garage front ends at the top of the door, as in the catalogue
+    facadeZones: h.facadeZones?.map((z) => (z.wall === door.wall ? { ...z, h1: top } : z)),
+  };
+})();
