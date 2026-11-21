@@ -272,12 +272,16 @@ export interface HouseDef {
   openings: Opening[];
   /** interior partitions [x1,y1,x2,y2] (axis-aligned) */
   partitions: [number, number, number, number][];
-  rooms: { name: string; area: number; at: Vec2 }[];
+  /** ground-floor rooms: name, floor area, where the name goes, and (optionally) the floor's outline
+   *  inside the walls, for the coloured room plan of the staking sheet */
+  rooms: { name: string; area: number; at: Vec2; outline?: Vec2[] }[];
   paving: Slab[];
   porches: Porch[];
 
   /** terrace corners measured to the boundary they face, with their outward sides */
   terraceCorners: { at: Vec2; faces: Vec2[] }[];
+  /** outline of the terrace (plan coords), for the staking sheet; without it only `terraceCorners` are staked */
+  terrace?: Vec2[];
   /** house corners (outline indices) not dimensioned in the plan view (inner corners) */
   unmeasuredCorners: number[];
   /** house corners dimensioned to both boundaries they face */

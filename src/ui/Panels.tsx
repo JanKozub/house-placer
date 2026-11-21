@@ -5,7 +5,8 @@ import { roofTopAt } from '../house/roof';
 import { HOUSES } from '../house/projects';
 import { setBuildingFloor, setBuildingPlacement, useTarget } from '../house/annex';
 import type { Placement } from '../placement/geom2d';
-import { isPztPlacement, PROJECT_START, PZT } from '../site/sitePlan';
+import { isPztPlacement, layoutGarden, layoutGates, PROJECT_START, PZT, SHED_DRIVE } from '../site/sitePlan';
+import { makeStakeoutPlan } from '../placement/stakeout';
 import { cornerLabel } from '../placement/setbacks';
 import { sunTimes } from '../site/sun';
 import { carvedHeight } from '../site/Terrain';
@@ -319,6 +320,10 @@ export function PlacementPanel() {
         <CornerTable />
       </Section>
 
+      <Section title="Tyczenie palikami">
+        <StakeoutButton />
+      </Section>
+
       <Section title={several ? `Poziom posadzki i roboty ziemne · ${t.id === 'main' ? 'dom' : t.label.toLowerCase()}` : 'Poziom posadzki i roboty ziemne'}>
         <div className="row">
           <label className="grow">±0,00 (m n.p.m.)
@@ -457,6 +462,53 @@ function Profile() {
       <text x={4} y={H - 4} fontSize={9} fill="#6b7280">← tył</text>
       <text x={W - 4} y={H - 4} fontSize={9} fill="#6b7280" textAnchor="end">przód →</text>
     </svg>
+  );
+}
+
+/**
+ * The staking sheet (PDF) for the plot visit: the house, terrace, driveway and gate as they stand
+ * now, every stake measured from the plot borders, and the inside walls from the house's walls.
+ * Gates and the driveway come from the store, so "Tylko dom" does not leave them out; the extra
+ * buildings (wiata) are not staked.
+ */
+function StakeoutButton() {
+  const site = useSite();
+  const d = useDerived();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const s = useStore.getState();
+      const plan = makeStakeoutPlan({
+        parcel: site.parcel,
+        parcelNumber: site.meta.parcelNumber,
+        house: d.house,
+        placement: s.placement,
+        floorLevel: d.floorH,
+        annexes: d.annexes.filter((a) => !a.outbuilding).map((a) => ({ label: a.label, letter: a.letter, def: a.def, placement: a.placement, floorLevel: a.floorH })),
+        gates: layoutGates(s.projectId, s.gates),
+        driveways: layoutGarden(s.projectId, s.garden).filter((g) => g.kind === 'driveway' && g.id !== SHED_DRIVE.id).map((g) => g.points),
+      });
+      const { downloadStakeoutPdf } = await import('./stakeoutPdf');
+      await downloadStakeoutPdf(plan, `tyczenie-${d.house.id}-dz${site.meta.parcelNumber.replace('/', '-')}.pdf`);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <p className="hint">
+        PDF do wydruku na wizytę na działce: szkic z domem, tarasem, podjazdem i bramą, odległość każdego palika od granic działki oraz ściany pokoi mierzone od ścian domu.
+      </p>
+      <div className="chips">
+        <button className="primary" disabled={busy} onClick={run}>{busy ? 'Generuję…' : 'Pobierz PDF do tyczenia'}</button>
+      </div>
+      {error && <p className="hint warn">Nie udało się utworzyć PDF: {error}</p>}
+    </>
   );
 }
 

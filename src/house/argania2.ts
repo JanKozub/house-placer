@@ -63,6 +63,7 @@ const pergola: ExtraBox[] = (() => {
 // ground floor, 2.55 under the attic's flat ceiling, knee wall 1.25.
 // ---------------------------------------------------------------------------------------------
 const item = (kind: FurnitureKind, at: Vec2, face: Facing = 'S', w?: number, d?: number, more: Partial<FurnitureItem> = {}): FurnitureItem => ({ kind, at, face, w, d, ...more });
+const rect = (x0: number, y0: number, x1: number, y1: number): Vec2[] => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
 const RISE = ATTIC / 16, GOING = 0.272;
 const LANDING = 12 * RISE; // +2.295
 
@@ -369,17 +370,24 @@ export const argania2: HouseDef = {
 
   /** ground-floor partitions for the plan view: the real walls (see `interior`) */
   partitions: groundPartitions(interior.ground.walls),
+  // outlines: inside the walls of `interior` (the tiled / concrete floors are the `floors` rects);
+  // where rooms are open to each other (kitchen, living room, hall) the line runs on from the walls
   rooms: [
-    { name: '1. Wiatrołap', area: 4.07, at: [6.6, 7.4] },
-    { name: '2. Spiżarnia', area: 1.99, at: [5.12, 7.6] },
-    { name: '3. Kuchnia', area: 10.02, at: [2.4, 7.3] },
-    { name: '4. Salon + jadalnia', area: 36.61, at: [3.4, 2.8] },
-    { name: '5. Garderoba', area: 1.8, at: [8.3, 1.2] },
-    { name: '6. Hol', area: 4.74, at: [8.9, 4.6] },
-    { name: '7. Pokój', area: 11.94, at: [11.9, 1.8] },
-    { name: '8. Łazienka', area: 2.8, at: [10.3, 4.8] },
-    { name: '9. Kotłownia', area: 5.58, at: [12.6, 4.8] },
-    { name: '10. Garaż', area: 35.2, at: [10.8, 9.3] },
+    { name: '1. Wiatrołap', area: 4.07, at: [6.6, 7.4], outline: rect(5.89, 5.98, 7.69, 8.25) },
+    { name: '2. Spiżarnia', area: 1.99, at: [5.12, 7.6], outline: rect(4.61, 6.45, 5.77, 8.25) },
+    { name: '3. Kuchnia', area: 10.02, at: [2.4, 7.3], outline: rect(0.45, 5.76, 4.49, 8.25) },
+    {
+      name: '4. Salon + jadalnia', area: 36.61, at: [3.4, 2.8],
+      // with the passage past the pantry to the vestibule
+      outline: [[0.45, 0.45], [7.44, 0.45], [7.44, 5.7], [5.83, 5.7], [5.83, 6.45], [4.61, 6.45], [4.61, 5.76], [0.45, 5.76]],
+    },
+    { name: '5. Garderoba', area: 1.8, at: [8.3, 1.2], outline: rect(7.58, 0.45, 9.57, 1.42) },
+    // the stairs (7.58–8.55 × 1.42–4.41 and the top flight) are not a room
+    { name: '6. Hol', area: 4.74, at: [8.9, 4.6], outline: [[8.56, 2.41], [9.57, 2.41], [9.57, 5.7], [7.58, 5.7], [7.58, 4.41], [8.56, 4.41]] },
+    { name: '7. Pokój', area: 11.94, at: [11.9, 1.8], outline: rect(9.83, 0.45, 13.85, 3.44) },
+    { name: '8. Łazienka', area: 2.8, at: [10.3, 4.8], outline: rect(9.71, 3.58, 11.05, 5.7) },
+    { name: '9. Kotłownia', area: 5.58, at: [12.6, 4.8], outline: rect(11.23, 3.58, 13.85, 5.7) },
+    { name: '10. Garaż', area: 35.2, at: [10.8, 9.3], outline: rect(7.85, 5.98, 13.85, DW - 0.45) },
   ],
   upperRooms: [
     { name: 'Hol', area: 10.83 },
@@ -434,6 +442,8 @@ export const argania2: HouseDef = {
   ],
 
   terraceCorners: [{ at: [-0.2, -3.85], faces: [[0, -1], [-1, 0]] }],
+  // the two terrace slabs above as one outline (the pergola part 3.85 m deep, the rest 3.00 m)
+  terrace: [[-0.2, -3.85], [9.6, -3.85], [9.6, -3.0], [W, -3.0], [W, 0], [-0.2, 0]],
   /** (W, D) is a straight-through vertex; (XW, D) the inner corner by the entrance */
   unmeasuredCorners: [2, 5],
   twoEdgeCorners: [3, 4],
