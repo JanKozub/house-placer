@@ -178,3 +178,20 @@ export const argania2Mid: HouseDef = splitLevel({
   // it stands where the PZT puts the house: the same north-east line as the lowered-garage variant
   yardNE: [[XW, 22.15], [18.2, 21.35]],
 });
+
+/**
+ * The compromise with an ordinary rectangular window in the garage-wing gable instead of the glazed
+ * gable (the user's request, 2026-11-21, to compare the look; the fixed gable glazing is hard to
+ * clean from outside and can't take a standard roller shutter). A French window 300/220 from the
+ * attic floor, like the 160/220 ones in the side gables, with three sashes: about the widest
+ * rectangle that fits under the roof slopes at that height (0.5 m of wall left above its corners).
+ * Everything else, the site layout included, is the compromise's.
+ */
+export const argania2MidRect: HouseDef = {
+  ...argania2Mid,
+  id: 'argania2-mid-rect',
+  name: 'Dom w Arganiach 2 (kompromis, okno prostokątne)',
+  openings: argania2Mid.openings.map((op) =>
+    op.shape === 'gable' ? { wall: op.wall, at: op.at, width: 3.0, height: 2.2, sill: op.level!, kind: 'window', panes: 3, ref: '300/220', level: op.level } : op,
+  ),
+};

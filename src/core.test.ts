@@ -12,7 +12,7 @@ import { driveSlope } from './site/drive';
 import { CAR_SIZE, CAR_STYLES } from './site/Cars';
 import { argania2 } from './house/argania2';
 import { accessRoads, DEFAULT_PROJECT, DEFAULT_SHED, FRONT, GARAGE_CARS, GROUND_DESIGN, layoutTrees, MID_DRIVE, midDriveLeft, midFenceLine, HEDGE, HEDGE_EDGES, isPztPlacement, layoutCars, layoutGarden, layoutGates, LOW_FLOOR_LEVEL, MID_FLOOR_LEVEL, PLOT, PROJECT_LAYOUT, PROJECT_START, PZT, PZT_CARS, PZT_DRIVEWAY, PZT_GATES, SHED_DRIVE, SHED_FLOOR_LEVEL, THUJA_HEDGE } from './site/sitePlan';
-import { argania2Low, argania2Mid, DRIVE_FALL, GARAGE_DROP, MID_DRIVE_FALL, MID_FLAT, MID_GARAGE_DROP, MID_RISERS, RISERS } from './house/argania2-low';
+import { argania2Low, argania2Mid, argania2MidRect, DRIVE_FALL, GARAGE_DROP, MID_DRIVE_FALL, MID_FLAT, MID_GARAGE_DROP, MID_RISERS, RISERS } from './house/argania2-low';
 import { lowerGroundPlatform, platformPolygon } from './derived';
 import { fenceOpenings, isBigTree, plantGeometry } from './site/Garden';
 import { buildFeatures, KERB, kerbPieces, RAISED_BED, SEAT_WALL } from './site/GardenFeatures';
@@ -1392,6 +1392,30 @@ describe('site data (public/site)', () => {
       // the lowered-garage variant is built by the same code and is unchanged
       expect(argania2Low.openings.find((o) => o.kind === 'garage')!.height).toBe(cat.height);
       expect(argania2Low.platform![0]).toEqual([-1, -1]);
+    });
+
+    it('with a rectangular window: only the gable glazing differs; the window fits under the roof; site shared, not the default', () => {
+      const rect = argania2MidRect;
+      const gable = argania2Mid.openings.find((o) => o.shape === 'gable')!;
+      const win = rect.openings.find((o) => o.wall === gable.wall && o.kind === 'window')!;
+      expect(rect.openings.some((o) => o.shape === 'gable')).toBe(false);
+      expect(rect.openings.filter((o) => o !== win)).toEqual(argania2Mid.openings.filter((o) => o !== gable));
+      expect([win.at, win.width, win.height, win.sill, win.level]).toEqual([gable.at, 3.0, 2.2, gable.level, gable.level]);
+      // at least 0.3 m of wall between the window's top corners and the underside of the roof
+      const w = rect.walls.find((ww) => ww.id === win.wall)!;
+      const { u0, u1 } = openingSpan(win, w);
+      const L = Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]);
+      const under = gableEaveUnder(rect) + Math.min(u0, L - u1) * Math.tan((rect.pitchDeg * Math.PI) / 180);
+      expect(under - (win.sill + win.height)).toBeGreaterThan(0.3);
+      expect(buildHouse(rect).glass!.attributes.position.count).toBeGreaterThan(0);
+      // everything around the house is the compromise's
+      expect(PROJECT_START[rect.id]).toEqual(PROJECT_START[argania2Mid.id]);
+      expect(GROUND_DESIGN[rect.id]).toBe(GROUND_DESIGN[argania2Mid.id]);
+      expect(PROJECT_LAYOUT[rect.id]).toBe(PROJECT_LAYOUT[argania2Mid.id]);
+      const front = [{ id: `${FRONT}-x` }];
+      expect(layoutTrees(rect.id, front as never)).toEqual(front);
+      expect(layoutCars(rect.id, PZT_CARS)).toEqual(layoutCars(argania2Mid.id, PZT_CARS));
+      expect(DEFAULT_PROJECT).toBe(argania2Mid.id);
     });
 
     it('stands exactly where the PZT draws the house, like every variant of Dom w Arganiach: 5.2 m from the north-west boundary, 10.9 m from the road behind', () => {

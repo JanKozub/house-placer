@@ -12,7 +12,7 @@
 import { toSite, type P2, type Placement } from '../placement/geom2d';
 import { toLocal } from '../house/geometry';
 import { argania2 } from '../house/argania2';
-import { argania2Low, argania2Mid } from '../house/argania2-low';
+import { argania2Low, argania2Mid, argania2MidRect } from '../house/argania2-low';
 import { wiataGaraz } from '../house/outbuildings';
 import type { GroundDesign, Road } from '../geo/site';
 import type { Car, GardenArea, Outbuilding, Tree } from '../store';
@@ -37,6 +37,8 @@ export const LOW_FLOOR_LEVEL = 357.8;
  * surveyed ground at the back wall (357.3–357.4) and 0.4 m below the road behind.
  */
 export const MID_FLOOR_LEVEL = 357.4;
+/** the compromise and its versions that differ only in the house itself: they share its level, ground, forecourt and entrance */
+const COMPROMISE = [argania2Mid.id, argania2MidRect.id];
 const r2 = (v: number) => Math.round(v * 100) / 100;
 /**
  * The frame the shared garden was drawn in: parallel to the house, 2.5 m along its back wall from
@@ -57,8 +59,11 @@ export const DEFAULT_PROJECT = argania2Mid.id;
 export const PROJECT_START: Record<string, { placement: Placement; floorLevel: number }> = {
   [PZT.projectId]: { placement: PZT.placement, floorLevel: PZT.floorLevel },
   [argania2Low.id]: { placement: PZT.placement, floorLevel: LOW_FLOOR_LEVEL },
-  [argania2Mid.id]: { placement: PZT.placement, floorLevel: MID_FLOOR_LEVEL },
+  ...Object.fromEntries(COMPROMISE.map((id) => [id, { placement: PZT.placement, floorLevel: MID_FLOOR_LEVEL }])),
 };
+
+/** the compromise's ground (see below), one object so its fitted ground is cached once */
+const MID_GROUND: GroundDesign = { level: MID_FLOOR_LEVEL - argania2Mid.plinth, slopes: [] };
 
 /**
  * Design ground of projects that don't use the PZT's (public/site/survey.json).
@@ -84,7 +89,7 @@ export const GROUND_DESIGN: Record<string, GroundDesign> = {
       { edge: 5, outer: 2, inner: [3, 5.3] }, // south-east: 0.6 m at the south corner to 2.2 m at the east corner
     ],
   },
-  [argania2Mid.id]: { level: MID_FLOOR_LEVEL - argania2Mid.plinth, slopes: [] },
+  ...Object.fromEntries(COMPROMISE.map((id) => [id, MID_GROUND])),
 };
 
 /** is this placement / floor level the project's reference one (to the cm / 0.1°)? Default: the PZT's. */
@@ -130,7 +135,7 @@ export const PZT_DRIVEWAY: GardenArea = {
 /** where the two cars in the garage stand, in the house's plan coordinates (the garage is X 7.85–13.85, Y 5.98–11.95) */
 export const GARAGE_CARS: P2[] = [[9.55, 9.4], [11.9, 9.4]];
 /** house projects that have this garage */
-const WITH_GARAGE = new Set([argania2.id, argania2Low.id, argania2Mid.id]);
+const WITH_GARAGE = new Set([argania2.id, argania2Low.id, ...COMPROMISE]);
 
 /** gates set into the fence: plot edge, metres along it from its first vertex, kind */
 export interface Gate { id: string; edge: number; from: number; to: number; kind: 'sliding' | 'wicket' }
@@ -182,13 +187,12 @@ export const MID_DRIVE = { left: 8.2, leftAtFence: 8.55, right: 15.2 };
 export const midDriveLeft = (Y: number) => MID_DRIVE.left + ((MID_DRIVE.leftAtFence - MID_DRIVE.left) * (Y - 12.4)) / (midFenceLine(MID_DRIVE.leftAtFence) - 12.4);
 const MID_YARD: P2[] = [[MID_DRIVE.left, 12.4], [MID_DRIVE.right, 12.4], [MID_DRIVE.right, midFenceLine(MID_DRIVE.right)], [MID_DRIVE.leftAtFence, midFenceLine(MID_DRIVE.leftAtFence)]];
 
-export const PROJECT_LAYOUT: Record<string, SiteLayout> = {
-  [argania2Mid.id]: {
-    driveway: { id: PZT_DRIVEWAY.id, kind: 'driveway', points: MID_YARD.map(fromPlan) },
-    gates: PZT_GATES, // the sliding gate's post is at plan X 8.70, the wicket (X 7.45–8.45) right beside it
-    cars: PZT_CARS,
-  },
+const MID_LAYOUT: SiteLayout = {
+  driveway: { id: PZT_DRIVEWAY.id, kind: 'driveway', points: MID_YARD.map(fromPlan) },
+  gates: PZT_GATES, // the sliding gate's post is at plan X 8.70, the wicket (X 7.45–8.45) right beside it
+  cars: PZT_CARS,
 };
+export const PROJECT_LAYOUT: Record<string, SiteLayout> = Object.fromEntries(COMPROMISE.map((id) => [id, MID_LAYOUT]));
 
 const swap = <T extends { id: string }>(items: T[], own: T[] | undefined): T[] => (own ? items.map((i) => own.find((o) => o.id === i.id) ?? i) : items);
 /** the garden areas, cars and gates as laid out for a project (see PROJECT_LAYOUT) */
@@ -201,7 +205,7 @@ export const layoutTrees = (projectId: string, trees: Tree[]) => frontOf(project
  */
 export const FRONT = 'g-front';
 const frontOf = <T extends { id: string }>(projectId: string, items: T[]): T[] => {
-  if (projectId === argania2Mid.id || !items.some((i) => i.id.startsWith(FRONT))) return items;
+  if (COMPROMISE.includes(projectId) || !items.some((i) => i.id.startsWith(FRONT))) return items;
   return items.filter((i) => !i.id.startsWith(FRONT));
 };
 export const layoutCars = (projectId: string, cars: Car[]) => {

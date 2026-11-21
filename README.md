@@ -99,6 +99,8 @@ This project has its own forecourt (`PROJECT_LAYOUT` in `src/site/sitePlan.ts`).
 
 Not modelled: the drain or shallow swale that the ground behind the terrace needs, since the lawn there falls towards the house. The levels are assumptions for the architect, as in the other variant.
 
+"Dom w Arganiach 2 (kompromis, okno prostokątne)" (`argania2MidRect`) is the compromise with one change, made to compare the look: the glazed gable over the garage (560/280, fixed panes, hard to clean from outside) becomes a French window 300/220 from the attic floor with three sashes, about the widest rectangle that fits under the roof slopes. It shares the compromise's start position, level, ground, forecourt and entrance garden. The compromise stays the default project.
+
 ## Interiors and looking inside
 
 Dom w Arganiach 2 (and both of its variants) has a full interior, measured from archon.pl's interactive ground-floor and attic plans and described in `interior` in `src/house/argania2.ts`:
