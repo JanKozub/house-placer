@@ -13,10 +13,10 @@
  * "kompromis" (argania2Mid): half-way between the PZT and the variant above. The house floor is
  * 0.40 m above the PZT's (357.40) and the garage floor 0.50 m below it (356.90, about the PZT's
  * forecourt level), so three steps lead up to the entrance and the drive is about as steep as on
- * the PZT: level for 1 m, then 11.5%. The garage door is 25 cm taller (500/250), which leaves 25 cm
+ * the PZT: level for 1 m, then 12.5%. The garage door is 25 cm taller (500/250), which leaves 25 cm
  * more wall above it than in the catalogue. The plot is not levelled: only the house, its terrace
- * and 2 m of lawn behind it stand on a platform, and the house stands 2.5 m further from the
- * north-west boundary (see src/site/sitePlan.ts).
+ * and 2 m of lawn behind it stand on a platform. The house stands where the PZT draws it, like
+ * every variant (see src/site/sitePlan.ts).
  *
  * In both the garage floor really is lower, and the boiler room with it (it is entered from the
  * garage): the floor slab is cut out there, the walls around go down to the lower floor, the door
@@ -161,9 +161,9 @@ export const argania2Low: HouseDef = splitLevel({
 /** the compromise: garage floor 0.50 m below ±0.00, three risers */
 export const MID_GARAGE_DROP = 0.5;
 export const MID_RISERS = 3;
-/** level for 1 m in front of the garage door, then down to the surveyed ground at the gate (355.85–355.9, 8.8 m on) */
+/** level for 1 m in front of the garage door and at the foot of the steps, then down to the surveyed ground at the gate (355.8–355.85, 8.4 m on) */
 export const MID_FLAT = 1;
-export const MID_DRIVE_FALL = 0.115;
+export const MID_DRIVE_FALL = 0.125;
 
 export const argania2Mid: HouseDef = splitLevel({
   id: 'argania2-mid',
@@ -175,6 +175,6 @@ export const argania2Mid: HouseDef = splitLevel({
   doorHeight: 2.5,
   // the terrace (3.85 m deep) and 2 m of lawn behind it are level; from there the lawn rises to the road as surveyed
   platformBack: 6,
-  // 2.5 m further from the north-west boundary than on the PZT: the north-east line as seen from there
-  yardNE: [[XW, 22.34], [18.18, 21.54]],
+  // it stands where the PZT puts the house: the same north-east line as the lowered-garage variant
+  yardNE: [[XW, 22.15], [18.2, 21.35]],
 });

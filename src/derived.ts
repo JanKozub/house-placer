@@ -1,6 +1,9 @@
 import { createContext, createElement, useContext, useMemo } from 'react';
-import type { Site } from './geo/site';
-import { useStore } from './store';
+import { surveyedHeightAt, type Site } from './geo/site';
+import { useHouseOnly, useOutbuildings, useStore } from './store';
+import { layoutGates } from './site/sitePlan';
+import { driveSlope } from './site/drive';
+import type { PlatformSpec } from './site/Terrain';
 import { useHouse } from './house/projects';
 import type { HouseDef } from './house/types';
 import { toLocal } from './house/geometry';
@@ -10,7 +13,6 @@ import { outbuildingKind } from './house/outbuildings';
 import { computeEarthwork, offsetPolygon } from './placement/earthwork';
 import { computeSetbacks, footprintSite, nearestCornerDistances, type CornerDistance } from './placement/setbacks';
 import { sunState } from './site/sun';
-import type { PlatformSpec } from './site/Terrain';
 
 export const SiteContext = createContext<Site | null>(null);
 export const useSite = () => {
@@ -81,12 +83,14 @@ function useComputeDerived() {
   const placement = useStore((s) => s.placement);
   const floorLevelSetting = useStore((s) => s.floorLevel);
   const annexStore = useStore((s) => s.annexes);
-  const outbuildings = useStore((s) => s.outbuildings);
+  const outbuildings = useOutbuildings();
   const buildingLine = useStore((s) => s.buildingLine);
   const sun = useStore((s) => s.sun);
   const garden = useStore((s) => s.garden);
+  const gates = useStore((s) => s.gates);
+  const houseOnly = useHouseOnly();
 
-  const patios = useMemo(() => garden.filter((g) => g.kind === 'patio').map((g) => g.points), [garden]);
+  const patios = useMemo(() => (houseOnly ? [] : garden.filter((g) => g.kind === 'patio').map((g) => g.points)), [garden, houseOnly]);
   const main = useMemo(() => buildingGeo(site, house, placement, floorLevelSetting, buildingLine, patios), [site, house, placement, floorLevelSetting, buildingLine, patios]);
   // separate buildings (detached garage): own placement, platform and floor level; corners G1, G2…
   const annexes = useMemo(
@@ -118,8 +122,11 @@ function useComputeDerived() {
     const platforms = [main, ...all].flatMap((b) => (b.lower ? [b.lower, b.platform] : [b.platform]));
     // house ↔ each separate building: shortest distance between the walls
     const gaps = all.map((a) => ({ ...polygonGap(main.footprint, a.footprint), id: a.id, label: a.label }));
-    return { ...main, annexes: all, platforms, gaps };
-  }, [main, annexes, extra]);
+    // the drive from the entrance gate up (or down) to the garage; the gate counts even while "Tylko dom" hides it.
+    // The gate stands on the boundary, where the ground is as surveyed in every design.
+    const drive = driveSlope(house, placement, main.floorH, layoutGates(house.id, gates), site.parcel, surveyedHeightAt(site));
+    return { ...main, annexes: all, platforms, gaps, drive };
+  }, [main, annexes, extra, house, placement, gates, site]);
   // the sun doesn't depend on the house: don't recompute it on every drag
   const sunS = useMemo(() => sunState(sun, site.meta.origin.lat, site.meta.origin.lon, site.trueNorth), [sun, site]);
   return useMemo(() => ({ ...geo, house, sun: sunS }), [geo, house, sunS]);

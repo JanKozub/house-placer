@@ -22,6 +22,8 @@ The UI is in Polish. Deployed on Netlify (`netlify.toml`: `npm run build` → `d
 - Sun computed for the plot's latitude and longitude at any date and time, in Polish local time (CET/CEST), corrected for PUWG 1992 grid convergence.
 - Analytic HDR sky, soft shadows, GTAO ambient occlusion, and interior and wall lights at night.
 - **Photo mode**: progressive path tracing with `three-gpu-pathtracer`, exported as a PNG.
+- **House only** ("Tylko dom", a button in the top bar and a switch in both side panels): shows the house alone on the plot. The garden (beds, paths, paving), plants, cars, the fence with its gates, the extra buildings and the access road are hidden in the 3D view and on the plan. Nothing is deleted; switching it off brings everything back. Picking or adding an extra building switches it off (`layers.houseOnly`, `setHouseOnly` in `src/store.ts`).
+- **Drive slope** ("Nachylenie wjazdu", in both side panels): the average slope between the entrance gate and the garage. It runs from the surveyed ground in the middle of the sliding gate to the garage floor in the middle of the garage door, over the straight distance between them (`src/site/drive.ts`). For Dom w Arganiach 2 on the PZT position the gate is at 355.87 and the door 9.79 m away: 11.5% with the garage at 357.00, 10.5% for the compromise variant (356.90) and 4.3% for the lowered garage (356.30). It is an average, so a drive with a level part at the door is steeper than this on its sloping part.
 - Editable finish colours: plaster, roof, frames, wood and plinth.
 
 **Placement**
@@ -62,7 +64,7 @@ If no imagery is available, the ground falls back to a synthetic field texture.
 
 ## Default position (PZT)
 
-New visitors start on the compromise variant of Dom w Arganiach 2 (see below), with the garden described under "Garden". Returning visitors are switched to it once, and each project keeps the position they gave it.
+New visitors start on the compromise variant of Dom w Arganiach 2 (see below), with the garden described under "Garden". Returning visitors are switched to it once. Every variant of Dom w Arganiach 2 stands exactly where the PZT draws the house (decided on 2026-11-15); the variants differ in their floor levels and in the house itself. Positions saved before that were put back on the PZT position once, at each variant's own level; other houses keep the position they were given.
 
 Dom w Arganiach 2 itself is placed as in the land-development plan "PZT koncepcja" (2026-11-10), with ±0.00 = 357.00 m a.s.l. "Ustaw wg PZT" in the placement tab puts the house back. The position in `src/site/sitePlan.ts` was measured from the drawing. The map's plot outline was fitted to the GUGiK parcel, agreeing to 5–10 cm. Then the house's outer walls were fitted to the drawn walls. The back-left corner comes out 10.87 m from the south-west boundary, as labelled on the map.
 
@@ -72,7 +74,7 @@ The edges follow the slopes the PZT draws (`slopes` in the same file). They are 
 - a cut along the road side and the west half of the north-west side, about 0.85 m at the west corner
 - an embankment along the south-east and north-east sides, from nothing at the south corner to about 1.4 m at the east corner, and from there fading out to nothing by the gate
 
-So the plot is not a flat table. The back and the sides are level, and the front falls to the surveyed ground at the north corner, where the gate is. The map's own heights there are 356.5 in front of the garage, 356.0–356.1 by the gate and 355.9 at the corner, and the national LiDAR model agrees with the map's 58 spot heights to 8 cm. The forecourt (`design.ramps`) is level in front of the garage door and the entrance, then falls about 1.1 m to the gate, roughly 12%. The lawn beside it falls with it, with no bank along the curb, as the PZT draws none. Nothing is built up outside the plot. Earthworks come to about 220 m³ of cut and 330 m³ of fill.
+So the plot is not a flat table. The back and the sides are level, and the front falls to the surveyed ground at the north corner, where the gate is. The map's own heights there are 356.5 in front of the garage, 356.0–356.1 by the gate and 355.9 at the corner, and the national LiDAR model agrees with the 58 spot heights on and around the plot to 8 cm. The terrain passes through 169 spot heights read off the map in all, including Pakuz road, the road behind the plot and the neighbouring plots (`points` in `public/site/survey.json`). The forecourt (`design.ramps`) is level in front of the garage door and the entrance, then falls about 1.1 m to the gate, roughly 12%. The lawn beside it falls with it, with no bank along the curb, as the PZT draws none. Nothing is built up outside the plot. Earthworks come to about 220 m³ of cut and 330 m³ of fill.
 
 ## Lowered-garage variant and the access road
 
@@ -84,15 +86,15 @@ Every project shows the planned access road to the gate: gravel, along the outsi
 
 ## Compromise variant
 
-"Dom w Arganiach 2 (kompromis)" sits half-way between the two (`argania2Mid` in `src/house/argania2-low.ts`, built by the same code as the lowered-garage variant). It answers four objections at once: the house too close to the north-west neighbour, the garden cut below the road, the tall embankment at the east corner, and a garage 1.5 m below the entrance.
+"Dom w Arganiach 2 (kompromis)" sits half-way between the two (`argania2Mid` in `src/house/argania2-low.ts`, built by the same code as the lowered-garage variant). It answers three objections at once: the garden cut below the road, the tall embankment at the east corner, and a garage 1.5 m below the entrance.
 
 - Floor at 357.40, which is 0.40 m above the PZT's. That is level with the surveyed ground at the back wall (357.3–357.4) and about 0.4 m below the road boundary. The PZT floor is about 0.3 m below that ground.
 - Garage floor 0.50 m lower (356.90, about the PZT's forecourt level), so three steps lead up to the entrance. The garage door is 500/250 instead of 500/225, which leaves 25 cm more wall above it than in the catalogue.
-- The drive is level for 1 m at the door and then falls 11.5% to the surveyed ground at the gate, about as steep as on the PZT.
-- The house starts 2.5 m further from the north-west boundary: 7.7 m at the garage corner instead of 5.2 m, with over 20 m left on the other side. Front to back it stays where the PZT has it. "Ustaw wg wariantu" puts it back there.
-- The plot is not levelled (`GROUND_DESIGN` with no slopes): it keeps the surveyed ground, so there is no bank at the road and no embankment at the east corner. Only the house, the terrace and 2 m of lawn behind it stand on a level platform, which cuts about 0.3 m into the lawn rising to the road. Earthworks come to about 15 m³ of cut and 115 m³ of fill, including the forecourt.
+- The drive is level for 1 m at the door and then falls 12.5% to the surveyed ground at the gate (355.8–355.85), about as steep as on the PZT.
+- The house stands exactly where the PZT draws it, like every variant: 5.2 m from the north-west boundary at the garage corner and 10.87 m from the road behind. (Until 2026-11-15 this variant stood 2.5 m further from the north-west boundary.) "Ustaw wg PZT" puts it back there.
+- The plot is not levelled (`GROUND_DESIGN` with no slopes): it keeps the surveyed ground, so there is no bank at the road and no embankment at the east corner. Only the house, the terrace and 2 m of lawn behind it stand on a level platform, which cuts about 0.3 m into the lawn rising to the road. For the house the earthworks panel shows about 11 m³ of cut and 85 m³ of fill.
 
-Because the house stands elsewhere, this project has its own forecourt, gate, wicket and parked cars (`PROJECT_LAYOUT` in `src/site/sitePlan.ts`). They replace the PZT ones, by id, while the project is shown; the rest of the garden is shared as before. The forecourt is the same drawn yard moved with the house, which leaves a 2.5 m planting strip along the north-west fence, and the access road ends at the moved gate.
+This project has its own forecourt (`PROJECT_LAYOUT` in `src/site/sitePlan.ts`). It replaces the PZT one, by id, while the project is shown; the gate, the wicket and the parked cars are where the PZT layout has them, and the rest of the garden is shared as before. The drive is 7 m wide, which leaves a strip of garden 3 m wide (2 m at the fence) between it and the north-west neighbour.
 
 Not modelled: the drain or shallow swale that the ground behind the terrace needs, since the lawn there falls towards the house. The levels are assumptions for the architect, as in the other variant.
 
@@ -133,7 +135,7 @@ When stored data from an older version is opened, the hedges replace the trees p
 
 ### The designed garden
 
-On top of that comes a full planting plan (`src/site/gardenPlan.ts`), written in the house's plan coordinates as the compromise variant stands. It follows the motifs modern Polish garden visualisations keep returning to:
+On top of that comes a full planting plan (`src/site/gardenPlan.ts`), written in plan coordinates along the house's walls. What stands with the house (the entrance, the terrace beds, the rockery behind the terrace) is in the house's own coordinates. What belongs to the plot (the fire pit, the vegetable beds, the trees on the lawn) is in a garden frame 2.5 m along the back wall from the house: the garden was drawn when the compromise variant stood there, and those things kept their place when it moved back onto the PZT position. It follows the motifs modern Polish garden visualisations keep returning to:
 
 - the drive to the shed is planted on both sides: grasses and lavender between it and the fence, an avenue of four ball-headed trees over lavender on its garden side
 - white hydrangeas with ornamental grasses in front of the thuja hedge along the road and along the north-west neighbour
@@ -153,7 +155,7 @@ The entrance is redrawn around the compromise variant, after a set of front-gard
 - The wicket stands right beside the sliding gate. From it a path of light slabs, 1.4 m wide and edged with pebbles, runs straight to a small paved court at the foot of the front steps. It is laid in two pieces that stop at the drive to the shed, so that drive's cobbles run through unbroken (the family's choice).
 - Lanterns and grasses stand on both sides of the path, planters flank the steps, and a 45 cm seat wall with a timber top (area kind `wall`) stands between the path and the drive.
 - Left of the path a bed runs up to the kitchen window: a feature tree over blue fescue, box balls, hydrangeas, coneflowers, boulders and the red maple. The path along the kitchen and the landing beside the porch are paved in the same slabs.
-- Right of the drive, where the PZT had paving up to the neighbour's fence, is a pebble garden: a row of box balls along the paving, two pines, a tree, drifts of grass, fescue and coneflowers, and hydrangeas in front of the hedge.
+- Right of the drive, where the PZT had paving up to the neighbour's fence, is a pebble garden, 3 m wide at the house and 2 m at the fence: a row of box balls along the paving, a dwarf pine, a small tree, grasses, fescue and coneflowers, and hydrangeas in front of the hedge.
 
 New kinds for this: `perennial` (pink coneflower), `fescue`, `pot` (planter with a box ball), `bollard` (lantern). Beds are now drawn as bark mulch and gravel as river pebbles.
 

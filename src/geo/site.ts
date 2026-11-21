@@ -206,6 +206,16 @@ export function withGround(site: Site, design: GroundDesign | null | undefined):
   return s;
 }
 
+/**
+ * Height of the ground as surveyed, before any design levelling of the plot (the fitted terrain;
+ * without a survey, the terrain itself). The plot boundary keeps this ground in every design.
+ */
+export function surveyedHeightAt(site: Site): (x: number, z: number) => number {
+  if (!site.surveyed) return (x, z) => site.dem.heightAt(x, z);
+  const dem = new Dem(site.surveyed, site.dem.width, site.dem.height, site.dem.x0, site.dem.z0, site.dem.res);
+  return (x, z) => dem.heightAt(x, z);
+}
+
 export interface LandscapeMeta {
   bbox: { minE: number; minN: number; maxE: number; maxN: number };
   size: number;

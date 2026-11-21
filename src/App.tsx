@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { loadSite, withGround, type Site } from './geo/site';
 import { accessRoads, GROUND_DESIGN, PROJECT_LAYOUT } from './site/sitePlan';
 import { DerivedProvider, SiteContext } from './derived';
-import { useStore } from './store';
+import { useHouseOnly, useStore } from './store';
 import { centroid } from './placement/geom2d';
 import { Viewport } from './views/Viewport';
 import { PlacementPanel, PreviewPanel } from './ui/Panels';
@@ -17,6 +17,7 @@ export function App() {
   const set = useStore((s) => s.set);
   const setProject = useStore((s) => s.setProject);
   const house = useHouse();
+  const houseOnly = useHouseOnly();
 
   useEffect(() => {
     loadSite()
@@ -42,8 +43,10 @@ export function App() {
     const s = withGround(site, GROUND_DESIGN[house.id]);
     // a project with its own gate has the access road end there
     const own = PROJECT_LAYOUT[house.id];
+    // "Tylko dom": no gate is shown, so no road to it either
+    if (houseOnly) return { ...s, access: [] };
     return own ? { ...s, access: accessRoads(s.parcel, s.roads, own.gates) } : s;
-  }, [site, house.id]);
+  }, [site, house.id, houseOnly]);
 
   if (err) return <div className="splash">Nie udało się wczytać danych działki: {err}<br />Uruchom <code>npm run fetch-site</code>.</div>;
   if (!site || !projectSite) return <div className="splash">Wczytywanie działki 664/2…</div>;
@@ -68,6 +71,17 @@ export function App() {
               ))}
             </select>
             <OutbuildingBar />
+            <button
+              className={`only-house ${houseOnly ? 'on' : ''}`}
+              aria-pressed={houseOnly}
+              title={houseOnly ? 'Pokaż z powrotem ogród, ogrodzenie z bramami, auta, budynki dodatkowe i drogę dojazdową' : 'Ukryj ogród, rośliny, ogrodzenie z bramami, auta, budynki dodatkowe i drogę dojazdową. Zostaje sam dom; nic nie jest usuwane.'}
+              onClick={() => {
+                usePreviewUi.getState().setPhoto(null); // the path tracer holds the old scene
+                useStore.getState().setHouseOnly(!houseOnly);
+              }}
+            >
+              Tylko dom
+            </button>
           </div>
           <nav className="tabs" aria-label="Widok">
             <button className={tab === 'preview' ? 'on' : ''} aria-pressed={tab === 'preview'} onClick={() => switchTab('preview')}>Podgląd 3D</button>

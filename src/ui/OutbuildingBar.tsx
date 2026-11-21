@@ -17,9 +17,14 @@ export function OutbuildingBar() {
     const k = outbuildingKind(kind);
     if (!k) return;
     const s = useStore.getState();
+    if (s.layers.houseOnly) s.setHouseOnly(false); // a building you add is one you want to see
     s.addOutbuilding(kind, defaultOutbuildingPlacement(house, k.def, s.placement));
   };
-  const select = (id: string) => useStore.getState().set({ target: id, tab: 'placement', selected: null });
+  const select = (id: string) => {
+    const s = useStore.getState();
+    if (s.layers.houseOnly) s.setHouseOnly(false); // …and so is one you pick
+    s.set({ target: id, tab: 'placement', selected: null });
+  };
 
   // same names as the plan view and the tables: a second copy is "Wiata + garaż 2"
   const seen = new Map<string, number>();

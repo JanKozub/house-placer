@@ -45,6 +45,19 @@ function Section({ title, children, right, collapsible = false, defaultOpen = tr
   );
 }
 
+const HOUSE_ONLY_LABEL = 'Tylko dom (bez ogrodu, ogrodzenia, aut i wiaty)';
+
+/** "nachylenie wjazdu": the average slope between the entrance gate and the garage floor */
+function DriveSlopeLine() {
+  const dr = useDerived().drive;
+  if (!dr) return null;
+  return (
+    <p className="hint">
+      Nachylenie wjazdu: <b>{f(Math.abs(dr.slope) * 100, 1)}%</b> (średnie). Od bramy wjazdowej ({f(dr.gateLevel)} m n.p.m.) do garażu ({f(dr.garageLevel)} m n.p.m.) jest {f(Math.abs(dr.rise))} m {dr.rise >= 0 ? 'w górę' : 'w dół'} na {f(dr.length)} m.
+    </p>
+  );
+}
+
 function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
     <label className="toggle">
@@ -115,6 +128,7 @@ export function PreviewPanel() {
       <Section title="Wyświetlanie">
         <Toggle label="Ukryj dach (widok wnętrz)" value={!!layers.hideRoof || !!layers.hideUpper} onChange={(v) => setLayers(v ? { hideRoof: true } : { hideRoof: false, hideUpper: false })} />
         {house.upperFloor && <Toggle label="Ukryj piętro (poddasze) – widok parteru" value={!!layers.hideUpper} onChange={(v) => setLayers({ hideUpper: v })} />}
+        <Toggle label={HOUSE_ONLY_LABEL} value={!!layers.houseOnly} onChange={(v) => useStore.getState().setHouseOnly(v)} />
         <Toggle label="Trawnik na działce (zamiast obecnego pola)" value={layers.parcelLawn} onChange={(v) => setLayers({ parcelLawn: v })} />
         <Toggle label="Zdjęcie satelitarne jako teren" value={layers.ortho} onChange={(v) => setLayers({ ortho: v })} />
         <Toggle label="Drogi (OpenStreetMap)" value={layers.roads !== false} onChange={(v) => setLayers({ roads: v })} />
@@ -129,6 +143,7 @@ export function PreviewPanel() {
           {house.name} ({house.code}) · {f(house.width)} × {f(house.depth)} m · pow. zabudowy {f(house.footprintArea)} m² · pow. użytkowa {f(house.usableArea)} m² · dach {house.pitchDeg}° · wys. kalenicy {f(house.heightTotal)} m
         </p>
         <p className="hint">±0,00 = {f(d.floorH)} m n.p.m. · front skierowany na azymut {f(useStore.getState().placement.bearing, 0)}°</p>
+        <DriveSlopeLine />
         {house.upperRooms && (
           <p className="hint">
             Poddasze ({f(house.upperRooms.reduce((s2, r) => s2 + r.area, 0), 2)} m², posadzka +{f(house.upperFloor?.level ?? 0, 2)}): {house.upperRooms.map((r) => `${r.name.toLowerCase()} ${f(r.area, 2)}`).join(', ')} m².
@@ -322,10 +337,12 @@ export function PlacementPanel() {
         {several && (
           <p className="hint">Razem dom i {d.annexes.map((a) => a.label.toLowerCase()).join(', ')}: wykop {f(d.earthwork.cut + d.annexes.reduce((s2, a) => s2 + a.earthwork.cut, 0), 0)} m³, nasyp {f(d.earthwork.fill + d.annexes.reduce((s2, a) => s2 + a.earthwork.fill, 0), 0)} m³.</p>
         )}
+        {t.id === 'main' && <DriveSlopeLine />}
         <Profile />
       </Section>
 
       <Section title="Zagospodarowanie działki">
+        {layers.houseOnly && <p className="hint warn">Włączony widok „Tylko dom”: ogród, ogrodzenie, auta i budynki dodatkowe są ukryte (nie usunięte).</p>}
         <div className="tools" role="group" aria-label="Narzędzia">
           {tools.map(([t, label]) => (
             <button key={t} className={tool === t ? 'on' : ''} aria-pressed={tool === t} onClick={() => set({ tool: t, selected: null })}>{label}</button>
@@ -356,6 +373,7 @@ export function PlacementPanel() {
 
       <Section title="Warstwy i plik">
         <Toggle label="Rzut domu (pomieszczenia, otwory)" value={layers.plan} onChange={(v) => setLayers({ plan: v })} />
+        <Toggle label={HOUSE_ONLY_LABEL} value={!!layers.houseOnly} onChange={(v) => useStore.getState().setHouseOnly(v)} />
         <div className="row">
           <span className="grow">Wymiary na planie</span>
           <div className="seg" role="group" aria-label="Wymiary na planie">

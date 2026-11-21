@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Site } from '../geo/site';
-import { useGarden, useGates, useStore, useTrees, type Tree, type TreeKind } from '../store';
+import { useFenceEdges, useGarden, useGates, useStore, useTrees, type Tree, type TreeKind } from '../store';
 import { pointInPolygon, type P2 } from '../placement/geom2d';
 import { carvedHeight, type PlatformSpec } from './Terrain';
 import type { Gate } from './sitePlan';
@@ -303,7 +303,7 @@ export function fenceOpenings(parcel: P2[], edge: number, polys: P2[][], gates: 
 }
 
 export function Fence({ site, platform }: { site: Site; platform: PlatformSpec | PlatformSpec[] | null }) {
-  const edges = useStore((s) => s.fenceEdges);
+  const edges = useFenceEdges();
   const H = useStore((s) => s.fenceHeight);
   const garden = useGarden();
   const gateList = useGates();

@@ -66,6 +66,9 @@ code { background: var(--line-soft); padding: 1px 4px; border-radius: 4px; }
 .ob-chip.on .ob-remove { color: #c9ced6; }
 .ob-add { border-style: dashed; border-radius: 999px; color: var(--muted); font-size: 13px; padding: 3px 12px; width: auto; }
 .ob-add:hover { color: var(--ink); border-style: solid; }
+/* "Tylko dom": the house alone, everything else on the plot hidden */
+.only-house { border-radius: 999px; font-size: 13px; padding: 3px 12px; width: auto; }
+.only-house.on { background: var(--ink); border-color: var(--ink); color: #fff; }
 .tabs { display: flex; gap: 4px; }
 .tabs button { padding: 6px 14px; }
 .main { flex: 1; display: flex; min-height: 0; }

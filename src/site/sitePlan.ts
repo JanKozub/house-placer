@@ -31,15 +31,22 @@ export const PZT: { projectId: string; placement: Placement; floorLevel: number;
 export const LOW_FLOOR_LEVEL = 357.8;
 
 /**
- * The compromise variant: the house floor 0.40 m above the PZT's — level with the surveyed ground
- * at the back wall (357.3–357.4) and 0.4 m below the road behind — and the house 2.5 m further from
- * the north-west boundary (7.7 m instead of 5.2 m at the garage corner), same bearing.
+ * The compromise variant: same spot as on the PZT (the user's decision, 2026-11-15: every variant
+ * of Dom w Arganiach stands exactly where the PZT draws the house; the variants differ in their
+ * levels and in the house itself), with the house floor 0.40 m above the PZT's — level with the
+ * surveyed ground at the back wall (357.3–357.4) and 0.4 m below the road behind.
  */
 export const MID_FLOOR_LEVEL = 357.4;
-export const MID_SHIFT = 2.5;
 const r2 = (v: number) => Math.round(v * 100) / 100;
-export const MID_PLACEMENT: Placement = (() => {
-  const c = toSite([-MID_SHIFT, 0], PZT.placement); // along the back wall, away from the garage side
+/**
+ * The frame the shared garden was drawn in: parallel to the house, 2.5 m along its back wall from
+ * the PZT position, away from the north-west neighbour. (The compromise variant stood there when
+ * the garden was planned.) What belongs to the plot keeps its place in this frame; what belongs to
+ * the house is written in the house's own plan coordinates and stands with it.
+ */
+export const GARDEN_SHIFT = 2.5;
+export const GARDEN_FRAME: Placement = (() => {
+  const c = toSite([-GARDEN_SHIFT, 0], PZT.placement);
   return { ...PZT.placement, x: r2(c[0]), z: r2(c[1]) };
 })();
 
@@ -50,7 +57,7 @@ export const DEFAULT_PROJECT = argania2Mid.id;
 export const PROJECT_START: Record<string, { placement: Placement; floorLevel: number }> = {
   [PZT.projectId]: { placement: PZT.placement, floorLevel: PZT.floorLevel },
   [argania2Low.id]: { placement: PZT.placement, floorLevel: LOW_FLOOR_LEVEL },
-  [argania2Mid.id]: { placement: MID_PLACEMENT, floorLevel: MID_FLOOR_LEVEL },
+  [argania2Mid.id]: { placement: PZT.placement, floorLevel: MID_FLOOR_LEVEL },
 };
 
 /**
@@ -104,8 +111,10 @@ const fromPlanAt = ([X, Y]: P2, pl: Placement): P2 => {
   return [r2(p[0]), r2(p[1])];
 };
 const fromPlan = (p: P2): P2 => fromPlanAt(p, PZT.placement);
-/** a point given in the plan coordinates of Dom w Arganiach as the compromise variant stands (X along the back wall towards the north-west neighbour, Y towards the gate) */
-export const gardenPoint = (p: P2): P2 => fromPlanAt(p, MID_PLACEMENT);
+/** a point given in the plan coordinates of Dom w Arganiach where the PZT puts it (X along the back wall towards the north-west neighbour, Y towards the gate) */
+export const housePoint = (p: P2): P2 => fromPlan(p);
+/** a point of the plot's garden, given in the garden frame (the house's plan coordinates moved by GARDEN_SHIFT; see GARDEN_FRAME) */
+export const gardenPoint = (p: P2): P2 => fromPlanAt(p, GARDEN_FRAME);
 
 export const PZT_DRIVEWAY: GardenArea = {
   id: 'pzt-driveway',
@@ -151,19 +160,19 @@ const carsAt = (pl: Placement): Car[] => {
 export const PZT_CARS: Car[] = carsAt(PZT.placement);
 
 // ---------------------------------------------------------------------------------------------
-// A project that does not stand where the PZT puts the house has its own forecourt, gates and cars.
-// They replace the PZT ones (same ids) while that project is shown; everything else in the garden
-// is shared by all projects.
-// Compromise variant: the entrance is redrawn (see src/site/gardenPlan.ts). The cobbled drive is
-// only as wide as two cars and a turn need: 7 m in front of the garage door, straight to the
-// sliding gate, its far corners 0.3 m inside the north-east boundary. The wicket stays right
-// beside the gate, and people walk on their own path from it to the front steps; the rest of the
-// PZT's yard is garden.
+// A project can have its own forecourt, gates and cars. They replace the PZT ones (same ids) while
+// that project is shown; everything else in the garden is shared by all projects.
+// Compromise variant: it stands where the PZT puts the house, but its entrance is redrawn (see
+// src/site/gardenPlan.ts). The cobbled drive is only as wide as two cars and a turn need: 7 m in
+// front of the garage door, straight to the sliding gate, its far corners 0.3 m inside the
+// north-east boundary. The gate and the wicket are where the PZT layout has them (the gate centred
+// on the garage door, the wicket right beside it), and people walk on their own path from the
+// wicket to the front steps; the rest of the PZT's yard is garden.
 // ---------------------------------------------------------------------------------------------
 export interface SiteLayout { driveway: GardenArea; gates: Gate[]; cars: Car[] }
 
-/** plan Y of the line 0.3 m inside the north-east boundary, in the compromise variant's plan coordinates */
-export const midFenceLine = (X: number) => 22.34 - 0.0742 * (X - 7.4);
+/** plan Y of the line 0.3 m inside the north-east boundary, in the house's plan coordinates */
+export const midFenceLine = (X: number) => 22.156 - 0.0742 * (X - 7.4);
 /**
  * The drive of the compromise variant, in its plan coordinates: its left edge runs from the garage
  * door's jamb (X 8.2) to the sliding gate's post (X 8.55 at the fence), its right edge is X 15.2.
@@ -175,12 +184,9 @@ const MID_YARD: P2[] = [[MID_DRIVE.left, 12.4], [MID_DRIVE.right, 12.4], [MID_DR
 
 export const PROJECT_LAYOUT: Record<string, SiteLayout> = {
   [argania2Mid.id]: {
-    driveway: { id: PZT_DRIVEWAY.id, kind: 'driveway', points: MID_YARD.map((p) => fromPlanAt(p, MID_PLACEMENT)) },
-    gates: [
-      { id: 'pzt-gate', edge: 0, from: 33.0, to: 37.5, kind: 'sliding' },
-      { id: 'pzt-wicket', edge: 0, from: 31.75, to: 32.75, kind: 'wicket' }, // right beside the gate
-    ],
-    cars: carsAt(MID_PLACEMENT),
+    driveway: { id: PZT_DRIVEWAY.id, kind: 'driveway', points: MID_YARD.map(fromPlan) },
+    gates: PZT_GATES, // the sliding gate's post is at plan X 8.70, the wicket (X 7.45–8.45) right beside it
+    cars: PZT_CARS,
   },
 };
 
@@ -297,7 +303,7 @@ export const SHED_DRIVE: GardenArea = (() => {
     const p = toSite(toLocal(wiataGaraz, X, wiataGaraz.depth), DEFAULT_SHED.placement);
     return [r2(p[0]), r2(p[1])];
   };
-  return { id: 'shed-drive', kind: 'driveway', points: [door(0.3), onEdge(0, 34.5, 1.45), onEdge(0, 34.5, 4.95), door(4.05)] };
+  return { id: 'shed-drive', kind: 'driveway', points: [door(0.3), onEdge(0, 37, 1.45), onEdge(0, 37, 4.95), door(4.05)] };
 })();
 
 /** plot edges with a hedge: the north-west neighbour, the road behind (three edges) and the south-east neighbour */

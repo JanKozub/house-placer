@@ -114,6 +114,11 @@ export interface AppState {
     parcelLawn: boolean; neighbors: boolean; ao: boolean; interiorLights: boolean; ortho: boolean; dims: boolean; plan: boolean; roads?: boolean; buildings?: boolean; dimsMode?: DimsMode;
     /** look inside: hide the roof, or the upper storey together with the roof */
     hideRoof?: boolean; hideUpper?: boolean;
+    /**
+     * "Tylko dom": the house alone on the plot. The garden (beds, paths, paving), plants, cars, the
+     * fence with its gates, the extra buildings and the access road are not shown; nothing is deleted.
+     */
+    houseOnly?: boolean;
   };
   tool: Tool;
   selected: string | null;
@@ -125,6 +130,8 @@ export interface AppState {
   setSun: (p: Partial<Sun>) => void;
   setPalette: (p: Partial<Palette>) => void;
   setLayers: (p: Partial<AppState['layers']>) => void;
+  /** show the house alone (see layers.houseOnly); the controls go back to the house */
+  setHouseOnly: (on: boolean) => void;
   addGarden: (a: GardenArea) => void;
   addTree: (t: Tree) => void;
   addCar: (c: Car) => void;
@@ -202,6 +209,19 @@ export function migrateState(state: unknown, version: number) {
     const cars = out.cars ?? [], has = new Set(cars.map((c) => c.id));
     out = { ...out, cars: [...cars, ...PZT_CARS.filter((c) => c.id.startsWith('garage-') && !has.has(c.id))] };
   }
+  if (version < 13) {
+    // every variant of Dom w Arganiach stands exactly where the PZT draws the house, each at its
+    // own floor level (the user's decision, 2026-11-15): positions saved before are put back there.
+    // The garden is redrawn to match (the entrance moved with the compromise variant, the shed's
+    // drive is longer); anything the visitor added themselves stays.
+    const start = (id: string) => ({ placement: { ...PROJECT_START[id].placement }, floorLevel: PROJECT_START[id].floorLevel });
+    if (out.projectId && PROJECT_START[out.projectId]) out = { ...out, ...start(out.projectId) };
+    if (out.projectState) {
+      out = { ...out, projectState: Object.fromEntries(Object.entries(out.projectState).map(([id, st]) => [id, PROJECT_START[id] ? { ...st, ...start(id) } : st])) };
+    }
+    const mine = <T extends { id: string }>(list: T[] | undefined) => (list ?? []).filter((x) => !x.id.startsWith('g-'));
+    out = { ...out, trees: [...mine(out.trees), ...GARDEN_PLANTS], garden: [...mine(out.garden).map((g) => (g.id === SHED_DRIVE.id ? SHED_DRIVE : g)), ...GARDEN_AREAS] };
+  }
   return out;
 }
 
@@ -250,6 +270,7 @@ export const useStore = create<AppState>()(
       setSun: (p) => set({ sun: { ...get().sun, ...p } }),
       setPalette: (p) => set({ palette: { ...get().palette, ...p } }),
       setLayers: (p) => set({ layers: { ...get().layers, ...p } }),
+      setHouseOnly: (on) => set({ layers: { ...get().layers, houseOnly: on }, ...(on ? { target: 'main', selected: null, tool: 'select' as Tool } : {}) }),
       addGarden: (a) => set({ garden: [...get().garden, a] }),
       addTree: (t) => set({ trees: [...get().trees, t] }),
       addCar: (c) => set({ cars: [...get().cars, c] }),
@@ -274,7 +295,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'house-placer-v1',
-      version: 12,
+      version: 13,
       migrate: (state, version) => migrateState(state, version) as AppState,
       partialize: (s) => ({
         tab: s.tab,
@@ -301,23 +322,37 @@ export const useStore = create<AppState>()(
   ),
 );
 
-// The garden areas, cars and gates as shown for the active project: a project that stands elsewhere
-// than the PZT house has its own forecourt, gates and cars (PROJECT_LAYOUT in src/site/sitePlan.ts).
+// The garden areas, cars and gates as shown for the active project: a project
+// can have its own forecourt, gates and cars (PROJECT_LAYOUT in src/site/sitePlan.ts).
+// With "Tylko dom" (layers.houseOnly) they are all empty, and so are the fence and the extra
+// buildings: every view then shows the house alone. The stored lists are not touched.
+export const useHouseOnly = (): boolean => useStore((s) => !!s.layers.houseOnly);
+const NONE: never[] = [];
 export const useGarden = (): GardenArea[] => {
-  const garden = useStore((s) => s.garden), id = useStore((s) => s.projectId);
-  return useMemo(() => layoutGarden(id, garden), [id, garden]);
+  const garden = useStore((s) => s.garden), id = useStore((s) => s.projectId), off = useHouseOnly();
+  return useMemo(() => (off ? NONE : layoutGarden(id, garden)), [id, garden, off]);
 };
 export const useTrees = (): Tree[] => {
-  const trees = useStore((s) => s.trees), id = useStore((s) => s.projectId);
-  return useMemo(() => layoutTrees(id, trees), [id, trees]);
+  const trees = useStore((s) => s.trees), id = useStore((s) => s.projectId), off = useHouseOnly();
+  return useMemo(() => (off ? NONE : layoutTrees(id, trees)), [id, trees, off]);
 };
 export const useCars = (): Car[] => {
-  const cars = useStore((s) => s.cars), id = useStore((s) => s.projectId);
-  return useMemo(() => layoutCars(id, cars), [id, cars]);
+  const cars = useStore((s) => s.cars), id = useStore((s) => s.projectId), off = useHouseOnly();
+  return useMemo(() => (off ? NONE : layoutCars(id, cars)), [id, cars, off]);
 };
 export const useGates = (): Gate[] => {
-  const gates = useStore((s) => s.gates), id = useStore((s) => s.projectId);
-  return useMemo(() => layoutGates(id, gates), [id, gates]);
+  const gates = useStore((s) => s.gates), id = useStore((s) => s.projectId), off = useHouseOnly();
+  return useMemo(() => (off ? NONE : layoutGates(id, gates)), [id, gates, off]);
+};
+/** plot edges with a fence, as shown */
+export const useFenceEdges = (): number[] => {
+  const edges = useStore((s) => s.fenceEdges), off = useHouseOnly();
+  return off ? NONE : edges;
+};
+/** the extra buildings on the plot, as shown */
+export const useOutbuildings = (): Outbuilding[] => {
+  const obs = useStore((s) => s.outbuildings), off = useHouseOnly();
+  return off ? NONE : obs;
 };
 
 export const PERSIST_KEYS = ['projectId', 'projectState', 'placement', 'floorLevel', 'annexes', 'outbuildings', 'sun', 'palette', 'garden', 'trees', 'cars', 'gates', 'fenceEdges', 'fenceHeight', 'buildingLine', 'layers'] as const;

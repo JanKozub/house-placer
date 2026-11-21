@@ -5,7 +5,7 @@ import { Line, MapControls, OrthographicCamera } from '@react-three/drei';
 import { LabelContext, LabelOverlay, LabelProjector, LabelRegistry, WorldLabel } from './labels';
 import { create } from 'zustand';
 import { useDerived, useSite } from '../derived';
-import { uid, useCars, useGarden, useStore, useTrees, type GardenKind, type Tool, type TreeKind } from '../store';
+import { uid, useCars, useFenceEdges, useGarden, useStore, useTrees, type GardenKind, type Tool, type TreeKind } from '../store';
 import { houseById, useHouse } from '../house/projects';
 import { buildingDef, buildingPlacement, setBuildingPlacement, useTarget } from '../house/annex';
 import type { HouseDef } from '../house/types';
@@ -242,7 +242,7 @@ function RoadOverlay() {
 function SiteOverlay() {
   const site = useSite();
   const showNb = useStore((s) => s.layers.neighbors);
-  const fenceEdges = useStore((s) => s.fenceEdges);
+  const fenceEdges = useFenceEdges();
   const tool = useStore((s) => s.tool);
   const P = site.parcel;
   // slope bands (skarpy) drawn like on the PZT: the two edge lines and ticks across the slope

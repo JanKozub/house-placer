@@ -71,6 +71,7 @@ function ShadowCache() {
   // hiding the roof or the upper storey lets the sun into the rooms
   const hideRoof = useStore((s) => s.layers.hideRoof);
   const hideUpper = useStore((s) => s.layers.hideUpper);
+  const houseOnly = useStore((s) => !!s.layers.houseOnly);
   useEffect(() => {
     gl.shadowMap.autoUpdate = false;
   }, [gl]);
@@ -86,7 +87,7 @@ function ShadowCache() {
     clearTimeout(timer.current);
     if (performance.now() - last.current > 150) fire();
     else timer.current = setTimeout(fire, 150);
-  }, [gl, invalidate, d.sun.dir.x, d.sun.dir.y, d.sun.dir.z, d.floorY, tab, placement, annexes, d.annexes, trees, fenceEdges, fenceHeight, garden, hideRoof, hideUpper, d.house]);
+  }, [gl, invalidate, d.sun.dir.x, d.sun.dir.y, d.sun.dir.z, d.floorY, tab, placement, annexes, d.annexes, trees, fenceEdges, fenceHeight, garden, hideRoof, hideUpper, houseOnly, d.house]);
   return null;
 }
 
