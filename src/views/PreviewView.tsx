@@ -71,7 +71,8 @@ function CameraRig({ preset, nonce, valley }: { preset: ViewPreset; nonce: numbe
     camera.position.set(eye.x, ground(eye) + h, eye.y);
     controls.target.set(c.x, tgtH, c.y);
     controls.update();
-  }, [preset, nonce, controls, house]); // eslint-disable-line react-hooks/exhaustive-deps
+    // not on a project switch: the camera stays put, so variants can be compared from the same spot
+  }, [preset, nonce, controls]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
 }
 
